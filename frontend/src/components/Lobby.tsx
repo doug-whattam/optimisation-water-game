@@ -4,9 +4,36 @@ import { joinSession, setSessionToken } from '@/api/client'
 import { connectWebSocket } from '@/api/websocket'
 
 async function getDefaultSession() {
-  const res = await fetch('/api/sessions/default')
-  if (!res.ok) throw new Error(await res.text())
-  return res.json()
+  // Render free tier can take up to 60s to wake. Retry with patience.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch('/api/sessions/default', { signal: AbortSignal.timeout(45000) })
+      if (!res.ok) {
+        const text = await res.text()
+        throw new Error(text)
+      }
+      return res.json()
+    } catch (e) {
+      if (attempt < 2) {
+        // Retry
+        continue
+      }
+      throw e
+    }
+  }
+}
+
+// Also try with the full production URL as fallback
+async function getDefaultSessionWithFallback() {
+  try {
+    return await getDefaultSession()
+  } catch {
+    // If relative path fails, try the direct API URL
+    const directUrl = import.meta.env.VITE_API_URL || '/api'
+    const res = await fetch(`${directUrl}/sessions/default`, { signal: AbortSignal.timeout(45000) })
+    if (!res.ok) throw new Error(await res.text())
+    return res.json()
+  }
 }
 
 export default function Lobby() {
@@ -24,7 +51,7 @@ export default function Lobby() {
     setError('')
     try {
       // Get or create the single shared session
-      const session = await getDefaultSession()
+      const session = await getDefaultSessionWithFallback()
       // Join it
       const joinResult = await joinSession(session.id, username.trim())
       setSessionToken(joinResult.session_token)
@@ -80,7 +107,7 @@ export default function Lobby() {
               : 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white hover:from-blue-700 hover:to-cyan-600 shadow-lg hover:shadow-xl active:scale-95'
           }`}
         >
-          {loading ? 'Starting...' : 'Go →'}
+          {loading ? 'Connecting... (may take up to 30s if server is waking)' : 'Go →'}
         </button>
       </div>
     </div>
