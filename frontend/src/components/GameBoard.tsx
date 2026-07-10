@@ -11,6 +11,8 @@ import ParetoChart from '@/components/ParetoChart'
 import Leaderboard from '@/components/Leaderboard'
 import CellTooltip from '@/components/CellTooltip'
 import ToastContainer from '@/components/Toast'
+import SettingsButton from '@/components/SettingsButton'
+import Instructions from '@/components/Instructions'
 import GridScene from '@/three/GridScene'
 
 export default function GameBoard() {
@@ -22,12 +24,22 @@ export default function GameBoard() {
     <div className="flex w-full h-full">
       {/* Left Panel - Asset Palette & Costs */}
       <div className="w-72 flex flex-col bg-[#0f3460] border-r border-gray-700 overflow-y-auto">
-        <div className="p-4 border-b border-gray-700">
-          <h2 className="text-lg font-bold text-water-light">💧 OptiClean</h2>
+        <div className="p-4 border-b border-gray-700 flex items-center justify-between">
+          <h2 className="text-lg font-bold text-water-light">💧 Optimisation</h2>
+          <button
+            onClick={() => useGameStore.getState().resetToLobby()}
+            className="text-xs px-2 py-1 bg-[#1a1a2e] text-gray-400 hover:text-white hover:bg-gray-700 rounded transition-colors"
+          >
+            New User
+          </button>
         </div>
+        <Instructions />
         <AssetPalette />
         <CostTracker />
         <SimulationControls />
+        <div className="mt-auto">
+          <SettingsButton />
+        </div>
       </div>
 
       {/* Center - 3D Viewport */}

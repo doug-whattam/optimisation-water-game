@@ -2,7 +2,6 @@
 
 import asyncio
 from datetime import datetime, timezone
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Header
 from sqlalchemy import select, func
@@ -107,7 +106,7 @@ async def submit_design(
 
 @router.post("/{design_id}/simulate", response_model=SimulationTriggerResponse, status_code=202)
 async def trigger_simulation(
-    design_id: UUID,
+    design_id: str,
     db: AsyncSession = Depends(get_db),
     player: Player = Depends(get_current_player),
 ):
@@ -188,7 +187,7 @@ async def trigger_simulation(
 
 @router.get("/{design_id}/result", response_model=SimulationResultResponse)
 async def get_simulation_result(
-    design_id: UUID,
+    design_id: str,
     db: AsyncSession = Depends(get_db),
     player: Player = Depends(get_current_player),
 ):

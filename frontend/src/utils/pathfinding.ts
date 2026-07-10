@@ -1,10 +1,10 @@
 /**
  * Client-side connectivity validation using BFS from reservoir to demand nodes.
  */
-import { PlacedAsset, DEMAND_NODES, Direction } from '@/types'
+import { PlacedAsset, DEMAND_NODES } from '@/types'
 import { computeRotatedPorts, getNeighbor, OPPOSITE } from '@/utils/portAlignment'
 
-const RESERVOIR = { row: 1, col: 'A' }
+// Reservoir is outside grid, connects into A1 from north
 
 export function hasValidPath(placedAssets: PlacedAsset[]): boolean {
   const assetMap = new Map<string, PlacedAsset>()
@@ -15,25 +15,16 @@ export function hasValidPath(placedAssets: PlacedAsset[]): boolean {
   const visited = new Set<string>()
   const queue: string[] = []
 
-  // Start from reservoir: check all 4 directions
-  visited.add(`${RESERVOIR.row}_${RESERVOIR.col}`)
-  const allDirs = [Direction.North, Direction.East, Direction.South, Direction.West]
+  // Reservoir connects into A1 from above (vertically).
+  // Any asset placed at A1 is automatically connected to the reservoir
+  // regardless of port direction — the pipe enters from above.
+  const entryKey = '1_A'
+  const entryAsset = assetMap.get(entryKey)
+  if (!entryAsset) return false
 
-  for (const dir of allDirs) {
-    const neighbor = getNeighbor(RESERVOIR.row, RESERVOIR.col, dir)
-    if (!neighbor) continue
-    const key = `${neighbor.row}_${neighbor.col}`
-    const neighborAsset = assetMap.get(key)
-    if (!neighborAsset) continue
-
-    const neighborPorts = computeRotatedPorts(neighborAsset.asset_type, neighborAsset.rotation_degrees)
-    if (neighborPorts.includes(OPPOSITE[dir])) {
-      if (!visited.has(key)) {
-        visited.add(key)
-        queue.push(key)
-      }
-    }
-  }
+  // No port direction check needed — reservoir connects unconditionally
+  visited.add(entryKey)
+  queue.push(entryKey)
 
   // BFS through connected assets
   while (queue.length > 0) {

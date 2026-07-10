@@ -1,7 +1,5 @@
 """Pareto chart data endpoint."""
 
-from uuid import UUID
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,7 +13,7 @@ router = APIRouter(prefix="/api/sessions", tags=["pareto"])
 
 
 @router.get("/{session_id}/pareto", response_model=ParetoResponse)
-async def get_pareto_data(session_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_pareto_data(session_id: str, db: AsyncSession = Depends(get_db)):
     # Verify session exists
     result = await db.execute(select(GameSession).where(GameSession.id == session_id))
     session = result.scalar_one_or_none()
@@ -54,7 +52,7 @@ async def get_pareto_data(session_id: UUID, db: AsyncSession = Depends(get_db)):
     # Build response
     designs_response = [
         ParetoPointResponse(
-            design_id=UUID(p.design_id),
+            design_id=p.design_id,
             player_username=p.player_username,
             plan_number=p.plan_number,
             total_cost=p.total_cost,

@@ -10,10 +10,9 @@ import { AssetType } from '@/types'
 
 const NUMBER_TO_ASSET: Record<string, AssetType> = {
   '1': AssetType.Pipe,
-  '2': AssetType.Straight,
-  '3': AssetType.Elbow,
-  '4': AssetType.Tee,
-  '5': AssetType.Cross,
+  '2': AssetType.Elbow,
+  '3': AssetType.Tee,
+  '4': AssetType.Cross,
 }
 
 export function useKeyboardShortcuts() {

@@ -1,19 +1,31 @@
 """FastAPI application entry point."""
 
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select
 
-from app.config import CORS_ORIGINS
-from app.database import async_session_factory
+from app.config import CORS_ORIGINS, DATABASE_URL
+from app.database import async_session_factory, create_tables
 from app.models import Player
 from app.routers import sessions, designs, pareto
 from app.websocket.manager import manager
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # On startup: create tables if using SQLite (dev mode)
+    if "sqlite" in DATABASE_URL:
+        await create_tables()
+    yield
+
 
 app = FastAPI(
     title="OptiClean Water Game",
     description="3D Clean Water Network Optimization Game API",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # CORS

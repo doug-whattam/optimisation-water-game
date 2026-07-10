@@ -37,7 +37,6 @@ export const LAND_TYPE_COLORS: Record<string, string> = {
 // Asset types
 export enum AssetType {
   Pipe = 'pipe',
-  Straight = 'straight',
   Elbow = 'elbow',
   Tee = 'tee',
   Cross = 'cross',
@@ -45,7 +44,6 @@ export enum AssetType {
 
 export const ASSET_COSTS: Record<AssetType, number> = {
   [AssetType.Pipe]: 500,
-  [AssetType.Straight]: 500,
   [AssetType.Elbow]: 1000,
   [AssetType.Tee]: 1500,
   [AssetType.Cross]: 2000,
@@ -53,7 +51,6 @@ export const ASSET_COSTS: Record<AssetType, number> = {
 
 export const ASSET_LABELS: Record<AssetType, string> = {
   [AssetType.Pipe]: 'Pipe',
-  [AssetType.Straight]: 'Straight Connector',
   [AssetType.Elbow]: 'Elbow Connector',
   [AssetType.Tee]: 'Tee Connector',
   [AssetType.Cross]: 'Cross Connector',
@@ -70,7 +67,6 @@ export enum Direction {
 // Base port configurations (at 0° rotation)
 export const ASSET_PORTS: Record<AssetType, Direction[]> = {
   [AssetType.Pipe]: [Direction.North, Direction.South],
-  [AssetType.Straight]: [Direction.North, Direction.South],
   [AssetType.Elbow]: [Direction.North, Direction.East],
   [AssetType.Tee]: [Direction.North, Direction.East, Direction.South],
   [AssetType.Cross]: [Direction.North, Direction.East, Direction.South, Direction.West],

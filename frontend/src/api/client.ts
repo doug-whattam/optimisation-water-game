@@ -1,5 +1,7 @@
 import type { SessionInfo, PlacedAsset, SimulationResult, ParetoPoint } from '@/types'
 
+// In production on Render, the static site rewrites /api/* to the backend service.
+// In development, Vite proxy handles it. Either way, we use relative paths.
 const BASE_URL = '/api'
 
 let sessionToken: string | null = null

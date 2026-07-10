@@ -3,6 +3,17 @@ import { useGameStore } from '@/store/gameStore'
 import { submitDesign, triggerSimulation, getSimulationResult, getParetoData } from '@/api/client'
 import { hasValidPath } from '@/utils/pathfinding'
 
+function isSessionError(err: unknown): boolean {
+  const msg = String(err).toLowerCase()
+  return (
+    msg.includes('401') ||
+    msg.includes('403') ||
+    msg.includes('invalid session') ||
+    msg.includes('not found') ||
+    msg.includes('session token')
+  )
+}
+
 export default function SimulationControls() {
   const {
     placedAssets,
@@ -14,6 +25,7 @@ export default function SimulationControls() {
     setDesignId,
     updateParetoData,
     setPlayerState,
+    resetToLobby,
   } = useGameStore()
 
   const [error, setError] = useState('')
@@ -26,29 +38,51 @@ export default function SimulationControls() {
     setError('')
     setSimulating(true)
 
+    // Hard safety timeout — never stay stuck on "simulating" for more than 30s
+    const safetyTimer = setTimeout(() => {
+      setError('Simulation timed out. Please try again.')
+      setSimulating(false)
+      setPlayerState('designing')
+    }, 30000)
+
     try {
       // Submit the design
       const design = await submitDesign(sessionId, placedAssets)
       setDesignId(design.id)
 
-      // Trigger simulation
-      const simTrigger = await triggerSimulation(design.id)
+      // Trigger simulation (backend runs it synchronously and returns status)
+      await triggerSimulation(design.id)
 
-      // Poll for result (in production this would come via WebSocket)
-      if (simTrigger.status === 'completed' || simTrigger.status === 'failed') {
-        const result = await getSimulationResult(design.id)
-        setSimulationResult(result)
-      } else {
-        // Wait a bit then check
-        await new Promise(r => setTimeout(r, 2000))
-        const result = await getSimulationResult(design.id)
-        setSimulationResult(result)
+      // Poll for the result until it's completed or failed (max ~20s)
+      let result = null
+      for (let attempt = 0; attempt < 20; attempt++) {
+        result = await getSimulationResult(design.id)
+        if (result.status === 'completed' || result.status === 'failed') break
+        await new Promise((r) => setTimeout(r, 1000))
       }
+
+      clearTimeout(safetyTimer)
+
+      if (!result || result.status === 'failed') {
+        setError(result?.error_message || 'Simulation failed to produce results.')
+        setSimulating(false)
+        setPlayerState('designing')
+        return
+      }
+
+      setSimulationResult(result)
 
       // Refresh Pareto data
       const pareto = await getParetoData(sessionId)
       updateParetoData(pareto.designs, pareto.pareto_frontier)
     } catch (e) {
+      clearTimeout(safetyTimer)
+      if (isSessionError(e)) {
+        // Stale session (e.g. lobby was reset) — send back to enter username
+        alert('Your session has expired (the lobby may have been reset). Please re-enter your username.')
+        resetToLobby()
+        return
+      }
       setError(String(e))
       setSimulating(false)
       setPlayerState('designing')

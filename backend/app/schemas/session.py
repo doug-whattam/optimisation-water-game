@@ -1,5 +1,4 @@
 from datetime import datetime
-from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -10,14 +9,14 @@ class SessionCreate(BaseModel):
 
 
 class PlayerInfo(BaseModel):
-    id: UUID
+    id: str
     username: str
     connected_at: datetime
     is_connected: bool
 
 
 class SessionResponse(BaseModel):
-    id: UUID
+    id: str
     name: str
     max_players: int
     status: str
@@ -32,6 +31,6 @@ class JoinRequest(BaseModel):
 
 
 class JoinResponse(BaseModel):
-    player_id: UUID
+    player_id: str
     session_token: str
     session: SessionResponse

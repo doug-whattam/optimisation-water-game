@@ -29,7 +29,6 @@ function renderAssetGeometry(type: AssetType, showWater: boolean) {
 
   switch (type) {
     case AssetType.Pipe:
-    case AssetType.Straight:
       return (
         <group>
           {/* Pipe from north to south (along Z axis) */}

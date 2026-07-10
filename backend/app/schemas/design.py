@@ -1,5 +1,4 @@
 from datetime import datetime
-from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -12,12 +11,12 @@ class PlacedAssetSchema(BaseModel):
 
 
 class DesignSubmitRequest(BaseModel):
-    session_id: UUID
+    session_id: str
     grid_state: list[PlacedAssetSchema] = Field(min_length=1)
 
 
 class DesignResponse(BaseModel):
-    id: UUID
+    id: str
     plan_number: int
     total_cost: int
     asset_cost: int
@@ -26,7 +25,7 @@ class DesignResponse(BaseModel):
 
 
 class SimulationTriggerResponse(BaseModel):
-    simulation_id: UUID
+    simulation_id: str
     status: str
 
 
@@ -38,8 +37,8 @@ class TankLevels(BaseModel):
 
 
 class SimulationResultResponse(BaseModel):
-    simulation_id: UUID
-    design_id: UUID
+    simulation_id: str
+    design_id: str
     status: str
     stopping_tank: str | None = None
     tank_levels: dict[str, float] | None = None
@@ -50,7 +49,7 @@ class SimulationResultResponse(BaseModel):
 
 
 class ParetoPointResponse(BaseModel):
-    design_id: UUID
+    design_id: str
     player_username: str
     plan_number: int
     total_cost: float

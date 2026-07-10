@@ -44,15 +44,15 @@ export default function PortIndicators() {
       const neighborKey = `${neighbor.row}_${neighbor.col}`
       const neighborAsset = assetMap.get(neighborKey)
 
-      // Check if neighbor is reservoir (always connects)
-      const isReservoir = neighbor.row === 1 && neighbor.col === 'A'
+      // Check if neighbor is reservoir entry point (above A1 = north)
+      const isReservoirEntry = asset.row === 1 && asset.col === 'A' && dir === Direction.North
       // Check if neighbor is a demand node (always accepts)
       const isDemand = (neighbor.row === 2 && neighbor.col === 'A') ||
                        (neighbor.row === 2 && neighbor.col === 'F') ||
                        (neighbor.row === 5 && neighbor.col === 'A') ||
                        (neighbor.row === 6 && neighbor.col === 'F')
 
-      if (isReservoir || isDemand) {
+      if (isReservoirEntry || isDemand) {
         const offset = DIRECTION_OFFSET[dir]
         indicators.push({
           position: [wx + offset[0], offset[1], wz + offset[2]],

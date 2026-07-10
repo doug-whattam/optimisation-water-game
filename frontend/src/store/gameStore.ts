@@ -42,6 +42,7 @@ interface GameState {
   updateParetoData: (designs: ParetoPoint[], frontier: { total_cost: number; hydraulic_penalty: number }[]) => void
   updateTankLevels: (levels: Record<string, number>) => void
   resetDesign: () => void
+  resetToLobby: () => void
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -164,5 +165,25 @@ export const useGameStore = create<GameState>((set, get) => ({
     simulationResult: null,
     tankLevels: {},
     playerState: 'designing',
+  }),
+
+  resetToLobby: () => set({
+    sessionId: null,
+    sessionToken: null,
+    session: null,
+    username: null,
+    playerState: 'lobby',
+    gridConfig: [],
+    placedAssets: [],
+    selectedAssetType: null,
+    totalCost: 0,
+    assetCost: 0,
+    installationCost: 0,
+    currentDesignId: null,
+    simulationResult: null,
+    tankLevels: {},
+    isSimulating: false,
+    paretoDesigns: [],
+    paretoFrontier: [],
   }),
 }))

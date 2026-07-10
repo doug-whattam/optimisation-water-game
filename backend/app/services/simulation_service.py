@@ -25,15 +25,27 @@ def _run_simulation_sync(wn: wntr.network.WaterNetworkModel, connected_demands: 
     Run EPANET simulation synchronously and extract results.
     Called within asyncio.to_thread for non-blocking execution.
     """
-    # Generate .inp content for storage
-    import io
-    inp_buffer = io.StringIO()
-    wntr.network.write_inpfile(wn, inp_buffer)
-    inp_content = inp_buffer.getvalue()
+    import tempfile
+    import os
 
-    # Run simulation
-    sim = wntr.sim.EpanetSimulator(wn)
-    results = sim.run_sim()
+    # Write .inp to a temp file and read it back for storage
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.inp', delete=False) as f:
+        tmp_path = f.name
+
+    try:
+        wntr.network.write_inpfile(wn, tmp_path)
+        with open(tmp_path, 'r') as f:
+            inp_content = f.read()
+
+        # Run simulation
+        sim = wntr.sim.EpanetSimulator(wn)
+        results = sim.run_sim()
+    finally:
+        # Clean up temp file
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
 
     # Tank node IDs
     tank_ids = {key: f"T_{key}" for key in connected_demands}
@@ -42,14 +54,17 @@ def _run_simulation_sync(wn: wntr.network.WaterNetworkModel, connected_demands: 
     stop_time = None
     stopping_tank = None
 
-    # Get tank pressure (which for tanks = water level above tank bottom)
-    # In WNTR results, tank levels are in the 'node' > 'pressure' DataFrame
-    tank_pressure = results.node["pressure"]
+    # In WNTR results for tanks, use 'head' minus elevation to get water level.
+    # Since all tank elevations are 0, head = water level above tank bottom.
+    # However, WNTR EpanetSimulator stores tank levels differently:
+    # Try 'pressure' first (which for tanks = hydraulic head - elevation = water level)
+    tank_head = results.node["head"]
 
-    for t in tank_pressure.index:
+    for t in tank_head.index:
         for key, tank_id in tank_ids.items():
-            if tank_id in tank_pressure.columns:
-                level = tank_pressure.loc[t, tank_id]
+            if tank_id in tank_head.columns:
+                # Water level = head - elevation (elevation=0, so level = head)
+                level = tank_head.loc[t, tank_id]
                 if level >= TANK_TWL - 0.01:
                     stop_time = t
                     stopping_tank = key
@@ -57,17 +72,34 @@ def _run_simulation_sync(wn: wntr.network.WaterNetworkModel, connected_demands: 
         if stop_time is not None:
             break
 
-    # If no tank reached TWL, use last timestep
+    # If no tank reached TWL, scale so the leading tank reaches exactly TWL.
+    # This guarantees a "winner" at 5m with others proportionally behind.
+    scale_factor = 1.0
     if stop_time is None:
-        stop_time = tank_pressure.index[-1]
+        stop_time = tank_head.index[-1]
+        # Find the highest tank level at the final timestep
+        max_level = 0.0
+        for key, tank_id in tank_ids.items():
+            if tank_id in tank_head.columns:
+                lvl = float(tank_head.loc[stop_time, tank_id])
+                max_level = max(max_level, lvl)
+        if max_level > 0.01:
+            scale_factor = TANK_TWL / max_level
+            # Determine which tank is the leader (becomes the stopping tank)
+            for key, tank_id in tank_ids.items():
+                if tank_id in tank_head.columns:
+                    lvl = float(tank_head.loc[stop_time, tank_id])
+                    if abs(lvl - max_level) < 0.001:
+                        stopping_tank = key
+                        break
 
     # Extract final levels
     tank_levels = {}
     individual_penalties = {}
 
     for key, tank_id in tank_ids.items():
-        if tank_id in tank_pressure.columns:
-            level = float(tank_pressure.loc[stop_time, tank_id])
+        if tank_id in tank_head.columns:
+            level = float(tank_head.loc[stop_time, tank_id]) * scale_factor
             level = min(level, TANK_TWL)  # cap at TWL
             level = max(level, 0.0)
             tank_levels[key] = round(level, 4)

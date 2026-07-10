@@ -14,7 +14,6 @@ class Direction(str, Enum):
 # Base port configurations (at 0° rotation)
 ASSET_PORTS: dict[str, list[Direction]] = {
     "pipe": [Direction.NORTH, Direction.SOUTH],
-    "straight": [Direction.NORTH, Direction.SOUTH],
     "elbow": [Direction.NORTH, Direction.EAST],
     "tee": [Direction.NORTH, Direction.EAST, Direction.SOUTH],
     "cross": [Direction.NORTH, Direction.EAST, Direction.SOUTH, Direction.WEST],
@@ -93,28 +92,23 @@ def validate_connectivity(grid_state: list[dict]) -> tuple[bool, list[str]]:
         key = (asset["row"], asset["col"])
         asset_map[key] = asset
 
-    # Reservoir position
-    res_row = RESERVOIR_CELL["row"]
-    res_col = RESERVOIR_CELL["col"]
-
-    # BFS from reservoir through connected assets
+    # Reservoir is now outside the grid (row 0, col A).
+    # It connects into the grid at A1 from the north.
+    # So BFS starts at A1 if there's an asset there with a North port,
+    # OR any cell adjacent to A1 that can be reached.
     visited: set[tuple[int, str]] = set()
     queue: deque[tuple[int, str]] = deque()
 
-    # Start: check all 4 directions from reservoir
-    visited.add((res_row, res_col))
-    for direction in Direction:
-        neighbor = get_neighbor(res_row, res_col, direction)
-        if neighbor and neighbor in asset_map:
-            # Check if the neighbor has a port facing back toward reservoir
-            neighbor_asset = asset_map[neighbor]
-            neighbor_ports = compute_rotated_ports(
-                neighbor_asset["asset_type"], neighbor_asset.get("rotation_degrees", 0)
-            )
-            if OPPOSITE[direction] in neighbor_ports:
-                if neighbor not in visited:
-                    visited.add(neighbor)
-                    queue.append(neighbor)
+    # The reservoir connects into A1 from above (vertically).
+    # Any asset placed at A1 is automatically connected to the reservoir
+    # regardless of port direction.
+    entry_cell = (1, "A")
+    if entry_cell in asset_map:
+        visited.add(entry_cell)
+        queue.append(entry_cell)
+    else:
+        # No asset at A1 — reservoir can't connect
+        return False, []
 
     # BFS through connected assets
     while queue:

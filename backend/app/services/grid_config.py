@@ -20,7 +20,6 @@ LAND_TYPE_COSTS = {
 # Asset costs in credits
 ASSET_COSTS = {
     "pipe": 500,
-    "straight": 500,
     "elbow": 1000,
     "tee": 1500,
     "cross": 2000,
@@ -40,17 +39,16 @@ DEMAND_NODES = {
 }
 
 # Reserved cells (cannot place assets here)
-RESERVOIR_CELL = {"row": 1, "col": "A"}
+RESERVOIR_CELL = {"row": 0, "col": "A"}  # Reservoir is OUTSIDE the grid (above row 1)
 DEMAND_NODE_CELLS = [(d["row"], d["col"]) for d in DEMAND_NODES.values()]
-RESERVED_CELLS = [(RESERVOIR_CELL["row"], RESERVOIR_CELL["col"])] + DEMAND_NODE_CELLS
+RESERVED_CELLS = DEMAND_NODE_CELLS  # A1 is now playable (rural)
 
 # Default grid layout based on the game board image
 # Each cell maps to a land type
 DEFAULT_GRID_CONFIG = [
-    # Row 0 (header) is labels only — grid starts at row 1
-    # Row 1
-    {"row": 1, "col": "A", "land_type": "reservoir", "installation_cost": 0},
-    {"row": 1, "col": "B", "land_type": "rural", "installation_cost": 1000},
+    # Row 1 - A1 is rural (reservoir is above/outside)
+    {"row": 1, "col": "A", "land_type": "rural", "installation_cost": 1000},
+    {"row": 1, "col": "B", "land_type": "railway", "installation_cost": 5000},
     {"row": 1, "col": "C", "land_type": "railway", "installation_cost": 5000},
     {"row": 1, "col": "D", "land_type": "railway", "installation_cost": 5000},
     {"row": 1, "col": "E", "land_type": "railway", "installation_cost": 5000},

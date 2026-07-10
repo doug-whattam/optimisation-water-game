@@ -46,7 +46,6 @@ export default function AssetPalette() {
 function AssetIcon({ type }: { type: AssetType }) {
   const icons: Record<AssetType, string> = {
     [AssetType.Pipe]: '│',
-    [AssetType.Straight]: '║',
     [AssetType.Elbow]: '╗',
     [AssetType.Tee]: '╠',
     [AssetType.Cross]: '╬',

@@ -1,7 +1,6 @@
 """Game session endpoints."""
 
 import secrets
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -56,8 +55,43 @@ async def create_session(body: SessionCreate, db: AsyncSession = Depends(get_db)
     return _session_to_response(session)
 
 
+@router.get("/default", response_model=SessionResponse)
+async def get_or_create_default_session(db: AsyncSession = Depends(get_db)):
+    """Get the default game session, creating it if it doesn't exist."""
+    result = await db.execute(
+        select(GameSession).where(GameSession.status.in_(["lobby", "active"])).limit(1)
+    )
+    session = result.scalar_one_or_none()
+    if session:
+        return _session_to_response(session)
+
+    # Create the default session
+    session = GameSession(
+        name="Optimisation Water Game",
+        max_players=50,
+        grid_config=DEFAULT_GRID_CONFIG,
+        status="active",
+    )
+    db.add(session)
+    await db.commit()
+    await db.refresh(session)
+    return _session_to_response(session)
+
+
+@router.post("/reset")
+async def reset_lobby(db: AsyncSession = Depends(get_db)):
+    """Delete all sessions, players, designs, and results. Recreate fresh."""
+    from app.models import SimulationResult, NetworkDesign, Player
+    await db.execute(SimulationResult.__table__.delete())
+    await db.execute(NetworkDesign.__table__.delete())
+    await db.execute(Player.__table__.delete())
+    await db.execute(GameSession.__table__.delete())
+    await db.commit()
+    return {"status": "ok", "message": "All data has been reset"}
+
+
 @router.get("/{session_id}", response_model=SessionResponse)
-async def get_session(session_id: UUID, db: AsyncSession = Depends(get_db)):
+async def get_session(session_id: str, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(GameSession).where(GameSession.id == session_id))
     session = result.scalar_one_or_none()
     if not session:
@@ -66,7 +100,7 @@ async def get_session(session_id: UUID, db: AsyncSession = Depends(get_db)):
 
 
 @router.post("/{session_id}/join", response_model=JoinResponse)
-async def join_session(session_id: UUID, body: JoinRequest, db: AsyncSession = Depends(get_db)):
+async def join_session(session_id: str, body: JoinRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(GameSession).where(GameSession.id == session_id))
     session = result.scalar_one_or_none()
     if not session:
