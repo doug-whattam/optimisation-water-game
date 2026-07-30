@@ -1,22 +1,30 @@
 import { useState } from 'react'
 import { useGameStore } from '@/store/gameStore'
+import { showToast } from '@/utils/toast'
 
+/**
+ * Admin controls.
+ *
+ * Note on the gate below: this password check runs in the browser against a
+ * constant compiled into the bundle, so it is a guard against accidental clicks,
+ * not a security boundary. Anyone who opens devtools can call the reset endpoint
+ * directly. If this needs to be a real control, the check has to move to
+ * `POST /api/sessions/reset` on the backend.
+ */
 const ADMIN_PASSWORD = 'Optimatics2026!'
 
 export default function SettingsButton() {
-  const [showModal, setShowModal] = useState(false)
+  const [open, setOpen] = useState(false)
   const [password, setPassword] = useState('')
   const [authenticated, setAuthenticated] = useState(false)
   const [error, setError] = useState('')
   const [resetting, setResetting] = useState(false)
-  const [resetDone, setResetDone] = useState(false)
 
   function handleOpen() {
-    setShowModal(true)
+    setOpen(true)
     setPassword('')
     setAuthenticated(false)
     setError('')
-    setResetDone(false)
   }
 
   function handleAuth() {
@@ -24,7 +32,7 @@ export default function SettingsButton() {
       setAuthenticated(true)
       setError('')
     } else {
-      setError('Incorrect password')
+      setError('Incorrect password.')
     }
   }
 
@@ -34,86 +42,87 @@ export default function SettingsButton() {
     try {
       const res = await fetch('/api/sessions/reset', { method: 'POST' })
       if (!res.ok) throw new Error(await res.text())
-      setResetDone(true)
-      // Reset the local state back to lobby
-      setTimeout(() => {
-        useGameStore.getState().resetToLobby()
-        setShowModal(false)
-      }, 1500)
+      showToast('Lobby reset', 'success', { detail: 'All players will need to rejoin.' })
+      setOpen(false)
+      useGameStore.getState().resetToLobby()
     } catch (e) {
       setError(String(e))
+    } finally {
+      setResetting(false)
     }
-    setResetting(false)
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === 'Enter') handleAuth()
   }
 
   return (
     <>
       <button
         onClick={handleOpen}
-        className="w-full p-3 text-xs text-gray-500 hover:text-gray-300 hover:bg-[#1a1a2e] border-t border-gray-700 transition-colors flex items-center gap-2"
+        className="flex w-full items-center gap-2 border-t border-ink-700 px-4 py-3 text-xs text-slate-500 transition-colors hover:bg-ink-800 hover:text-slate-300"
       >
-        ⚙️ Settings
+        <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden>
+          <circle cx="10" cy="10" r="2.6" />
+          <path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M15.3 4.7l-1.4 1.4M6.1 13.9l-1.4 1.4" strokeLinecap="round" />
+        </svg>
+        Admin
       </button>
 
-      {showModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-[#0f3460] rounded-xl p-6 w-80 shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-white">⚙️ Admin Settings</h3>
+      {open && (
+        <div
+          className="fixed inset-0 z-50 flex animate-fade-in items-center justify-center bg-ink-950/75 p-6 backdrop-blur-sm"
+          onClick={() => setOpen(false)}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="w-full max-w-sm animate-fade-up rounded-2xl border border-ink-700 bg-ink-850 p-6 shadow-panel"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start justify-between">
+              <h3 className="text-base font-semibold text-slate-100">Admin</h3>
               <button
-                onClick={() => setShowModal(false)}
-                className="text-gray-400 hover:text-white text-xl"
+                onClick={() => setOpen(false)}
+                className="rounded-md p-1 text-slate-500 transition-colors hover:bg-ink-800 hover:text-slate-200"
+                aria-label="Close"
               >
-                ×
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden>
+                  <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                </svg>
               </button>
             </div>
 
             {!authenticated ? (
               <div className="space-y-3">
-                <p className="text-sm text-gray-400">Enter admin password to access settings.</p>
+                <p className="text-xs text-slate-400">Enter the admin password.</p>
                 <input
                   type="password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Password..."
-                  className="w-full px-3 py-2 text-white bg-[#1a1a2e] border border-gray-600 rounded-lg focus:ring-2 focus:ring-water"
+                  onKeyDown={(e) => e.key === 'Enter' && handleAuth()}
+                  placeholder="Password"
+                  className="field py-2.5 text-sm"
                   autoFocus
                 />
-                {error && <p className="text-xs text-red-400">{error}</p>}
-                <button
-                  onClick={handleAuth}
-                  className="w-full py-2 bg-water text-white rounded-lg font-medium hover:bg-water-dark transition-colors"
-                >
+                {error && <p className="text-xs text-bad">{error}</p>}
+                <button onClick={handleAuth} className="btn-primary py-2.5 text-sm">
                   Unlock
                 </button>
               </div>
             ) : (
-              <div className="space-y-4">
-                {resetDone ? (
-                  <div className="p-3 bg-green-900/30 rounded-lg text-sm text-green-300">
-                    ✓ Lobby has been reset. Redirecting...
-                  </div>
-                ) : (
-                  <>
-                    <p className="text-sm text-gray-400">Admin actions:</p>
-                    <button
-                      onClick={handleResetLobby}
-                      disabled={resetting}
-                      className="w-full py-3 bg-red-700 hover:bg-red-800 text-white rounded-lg font-medium transition-colors disabled:opacity-50"
-                    >
-                      {resetting ? 'Resetting...' : '🗑️ Reset Lobby (Delete All Data)'}
-                    </button>
-                    <p className="text-xs text-gray-500">
-                      This will delete all sessions, players, designs, and simulation results. Everyone will need to rejoin.
-                    </p>
-                  </>
-                )}
-                {error && <p className="text-xs text-red-400">{error}</p>}
+              <div className="space-y-3">
+                <div className="rounded-lg border border-bad/30 bg-bad/8 p-3">
+                  <p className="text-xs font-medium text-slate-200">Reset lobby</p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-slate-400">
+                    Deletes every session, player, design, and simulation result. Everyone currently
+                    playing is disconnected and loses their submitted plans. This cannot be undone.
+                  </p>
+                </div>
+                <button
+                  onClick={handleResetLobby}
+                  disabled={resetting}
+                  className="w-full rounded-lg bg-bad/90 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-bad disabled:opacity-50"
+                >
+                  {resetting ? 'Resetting…' : 'Delete all data'}
+                </button>
+                {error && <p className="text-xs text-bad">{error}</p>}
               </div>
             )}
           </div>

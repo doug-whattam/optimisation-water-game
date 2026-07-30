@@ -2,16 +2,141 @@
 @tailwind components;
 @tailwind utilities;
 
-body {
-  margin: 0;
-  font-family: Inter, system-ui, -apple-system, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  background: #1a1a2e;
-  color: #eaeaea;
-  overflow: hidden;
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body {
+    margin: 0;
+    height: 100%;
+  }
+
+  body {
+    font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: #0a1020;
+    color: #e2e8f0;
+    overflow: hidden;
+    /* Stop the browser treating drag-select as text selection while painting pipes */
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  #root {
+    width: 100vw;
+    height: 100vh;
+  }
+
+  /* Inputs should still be selectable */
+  input,
+  textarea {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  /* Focus visibility without the default heavy outline */
+  :focus-visible {
+    outline: 2px solid #38bdf8;
+    outline-offset: 2px;
+  }
+
+  /* Slim, dark scrollbars that match the chrome */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #26365a transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #26365a;
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #33456e;
+    background-clip: content-box;
+  }
 }
 
-#root {
-  width: 100vw;
-  height: 100vh;
+@layer components {
+  /* Frosted side panel surface */
+  .panel {
+    @apply bg-ink-850/90 backdrop-blur-md border-ink-700;
+  }
+
+  /* Section wrapper used throughout the side rails */
+  .panel-section {
+    @apply px-4 py-3.5 border-b border-ink-700/70;
+  }
+
+  .section-title {
+    @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-400;
+  }
+
+  /* Numeric readouts */
+  .stat {
+    @apply font-mono text-sm tabular-nums;
+  }
+
+  /* Keyboard hint chip */
+  .kbd {
+    @apply inline-flex h-[18px] min-w-[18px] items-center justify-center rounded
+      border border-ink-600 bg-ink-900 px-1 font-mono text-[10px] leading-none text-slate-400;
+  }
+
+  .btn-primary {
+    @apply relative w-full overflow-hidden rounded-lg bg-gradient-to-r from-water-dark to-water
+      py-3 font-semibold text-white shadow-lg transition-all
+      hover:brightness-110 hover:shadow-glow active:scale-[0.985]
+      disabled:cursor-not-allowed disabled:bg-none disabled:bg-ink-750
+      disabled:text-slate-500 disabled:shadow-none disabled:hover:brightness-100;
+  }
+
+  .btn-ghost {
+    @apply rounded-md border border-ink-700 bg-ink-900/60 px-2.5 py-1.5 text-xs font-medium
+      text-slate-400 transition-colors hover:border-ink-600 hover:bg-ink-800 hover:text-slate-100
+      disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-ink-900/60
+      disabled:hover:text-slate-400;
+  }
+
+  .field {
+    @apply w-full rounded-lg border border-ink-600 bg-ink-950/80 px-4 py-3 text-slate-100
+      placeholder:text-slate-500 transition-shadow
+      focus:border-water/60 focus:outline-none focus:ring-2 focus:ring-water/30;
+  }
+}
+
+@layer utilities {
+  /* Hairline separator that fades at both ends */
+  .rule-fade {
+    background: linear-gradient(90deg, transparent, rgba(148, 163, 184, 0.22), transparent);
+  }
+
+  .text-shadow-sm {
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  }
+}
+
+/* Reduced motion: kill decorative animation, keep functional transitions short */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

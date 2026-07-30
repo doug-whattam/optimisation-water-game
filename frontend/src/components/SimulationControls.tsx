@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useGameStore } from '@/store/gameStore'
 import { submitDesign, triggerSimulation, getSimulationResult, getParetoData } from '@/api/client'
-import { hasValidPath } from '@/utils/pathfinding'
+import { analyseConnectivity } from '@/utils/pathfinding'
+import { showToast } from '@/utils/toast'
+import { BUDGET, DEMAND_NODES } from '@/types'
 
 function isSessionError(err: unknown): boolean {
   const msg = String(err).toLowerCase()
@@ -15,103 +17,168 @@ function isSessionError(err: unknown): boolean {
 }
 
 export default function SimulationControls() {
-  const {
-    placedAssets,
-    sessionId,
-    playerState,
-    totalCost,
-    setSimulating,
-    setSimulationResult,
-    setDesignId,
-    updateParetoData,
-    setPlayerState,
-    resetToLobby,
-  } = useGameStore()
+  const placedAssets = useGameStore((s) => s.placedAssets)
+  const sessionId = useGameStore((s) => s.sessionId)
+  const playerState = useGameStore((s) => s.playerState)
+  const totalCost = useGameStore((s) => s.totalCost)
+  const clearDesign = useGameStore((s) => s.clearDesign)
 
-  const [error, setError] = useState('')
+  const [busy, setBusy] = useState(false)
 
-  const hasPath = placedAssets.length > 0 && hasValidPath(placedAssets)
-  const disabled = playerState !== 'designing' || !hasPath || totalCost === 0
+  const { connectedDemands } = useMemo(() => analyseConnectivity(placedAssets), [placedAssets])
+
+  const designing = playerState === 'designing'
+  const overBudget = totalCost > BUDGET
+  const connectedCount = connectedDemands.size
+  const ready = designing && connectedCount > 0 && !overBudget && !busy
 
   async function handleOpenValve() {
     if (!sessionId) return
-    setError('')
-    setSimulating(true)
+    const store = useGameStore.getState()
+    setBusy(true)
+    store.setSimulating(true)
 
-    // Hard safety timeout — never stay stuck on "simulating" for more than 30s
-    const safetyTimer = setTimeout(() => {
-      setError('Simulation timed out. Please try again.')
-      setSimulating(false)
-      setPlayerState('designing')
-    }, 30000)
+    // Never leave the UI stuck on "simulating".
+    const safety = window.setTimeout(() => {
+      showToast('Simulation timed out', 'error', {
+        detail: 'The solver did not report back. Your design is unchanged — try again.',
+      })
+      store.setSimulating(false)
+      store.setPlayerState('designing')
+      setBusy(false)
+    }, 40000)
 
     try {
-      // Submit the design
       const design = await submitDesign(sessionId, placedAssets)
-      setDesignId(design.id)
+      store.setDesignId(design.id)
+      store.setLastPlanNumber(design.plan_number)
 
-      // Trigger simulation (backend runs it synchronously and returns status)
       await triggerSimulation(design.id)
 
-      // Poll for the result until it's completed or failed (max ~20s)
       let result = null
-      for (let attempt = 0; attempt < 20; attempt++) {
+      for (let attempt = 0; attempt < 25; attempt++) {
         result = await getSimulationResult(design.id)
         if (result.status === 'completed' || result.status === 'failed') break
-        await new Promise((r) => setTimeout(r, 1000))
+        await new Promise((r) => setTimeout(r, 800))
       }
 
-      clearTimeout(safetyTimer)
+      window.clearTimeout(safety)
 
       if (!result || result.status === 'failed') {
-        setError(result?.error_message || 'Simulation failed to produce results.')
-        setSimulating(false)
-        setPlayerState('designing')
+        showToast('Simulation failed', 'error', {
+          detail: result?.error_message || 'The solver did not produce results.',
+        })
+        store.setSimulating(false)
+        store.setPlayerState('designing')
         return
       }
 
-      setSimulationResult(result)
+      store.setSimulationResult(result)
+      showToast(`Plan #${design.plan_number} simulated`, 'success', {
+        detail: `Cost ${design.total_cost.toLocaleString()} cr · penalty ${(
+          result.hydraulic_penalty ?? 0
+        ).toFixed(2)} m`,
+      })
 
-      // Refresh Pareto data
       const pareto = await getParetoData(sessionId)
-      updateParetoData(pareto.designs, pareto.pareto_frontier)
+      store.updateParetoData(pareto.designs, pareto.pareto_frontier)
     } catch (e) {
-      clearTimeout(safetyTimer)
+      window.clearTimeout(safety)
       if (isSessionError(e)) {
-        // Stale session (e.g. lobby was reset) — send back to enter username
-        alert('Your session has expired (the lobby may have been reset). Please re-enter your username.')
-        resetToLobby()
+        showToast('Session expired', 'error', {
+          detail: 'The lobby may have been reset. Re-enter your username to continue.',
+        })
+        store.resetToLobby()
         return
       }
-      setError(String(e))
-      setSimulating(false)
-      setPlayerState('designing')
+      showToast('Could not submit design', 'error', { detail: String(e) })
+      store.setSimulating(false)
+      store.setPlayerState('designing')
+    } finally {
+      setBusy(false)
     }
   }
 
   return (
-    <div className="p-4">
-      <button
-        onClick={handleOpenValve}
-        disabled={disabled}
-        className={`w-full py-3 px-4 rounded-lg font-bold text-lg transition-all ${
-          disabled
-            ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-            : 'bg-gradient-to-r from-blue-600 to-cyan-500 text-white hover:from-blue-700 hover:to-cyan-600 shadow-lg hover:shadow-xl active:scale-95'
-        }`}
-      >
-        🔓 Open Reservoir Valve
+    <div className="panel-section">
+      {/* Readiness checklist — states the exact reason the button is disabled */}
+      <ul className="mb-3 space-y-1.5 text-xs">
+        <Check
+          ok={placedAssets.length > 0}
+          label={
+            placedAssets.length > 0
+              ? `${placedAssets.length} pieces placed`
+              : 'Place pipework on the board'
+          }
+        />
+        <Check
+          ok={connectedCount > 0}
+          label={
+            connectedCount > 0
+              ? `${connectedCount} of ${DEMAND_NODES.length} tanks connected to the reservoir`
+              : 'No route from the reservoir to a tank yet'
+          }
+        />
+        <Check ok={!overBudget} label={overBudget ? 'Over budget' : 'Within budget'} />
+      </ul>
+
+      <button onClick={handleOpenValve} disabled={!ready} className="btn-primary">
+        {busy || playerState === 'simulating' ? (
+          <span className="flex items-center justify-center gap-2">
+            <Spinner />
+            Simulating…
+          </span>
+        ) : (
+          'Open reservoir valve'
+        )}
       </button>
-      {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
-      {playerState === 'designing' && placedAssets.length === 0 && (
-        <p className="mt-2 text-xs text-gray-500 text-center">Place pipes to connect the reservoir to demand nodes first</p>
+
+      {designing && connectedCount > 0 && connectedCount < DEMAND_NODES.length && (
+        <p className="mt-2 text-[11px] leading-snug text-warn">
+          {DEMAND_NODES.length - connectedCount} tank
+          {DEMAND_NODES.length - connectedCount === 1 ? '' : 's'} unconnected — those will score the
+          full shortfall as penalty.
+        </p>
       )}
-      {playerState === 'designing' && placedAssets.length > 0 && !hasPath && (
-        <p className="mt-2 text-xs text-yellow-500 text-center">⚠️ No valid path from reservoir to any demand node yet</p>
-      )}
-      {playerState === 'designing' && hasPath && (
-        <p className="mt-2 text-xs text-green-400 text-center">✓ Valid path detected — ready to simulate</p>
-      )}
+
+      <button
+        onClick={clearDesign}
+        disabled={!designing || placedAssets.length === 0}
+        className="btn-ghost mt-2.5 w-full"
+      >
+        Clear network
+      </button>
     </div>
+  )
+}
+
+function Check({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <li className={`flex items-start gap-2 ${ok ? 'text-slate-300' : 'text-slate-500'}`}>
+      <span
+        className={`mt-[3px] grid h-3.5 w-3.5 shrink-0 place-content-center rounded-full text-[9px] font-bold ${
+          ok ? 'bg-good/20 text-good' : 'bg-ink-750 text-slate-500'
+        }`}
+        aria-hidden
+      >
+        {ok ? '✓' : '·'}
+      </span>
+      <span className="leading-snug">{label}</span>
+    </li>
+  )
+}
+
+function Spinner() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" className="animate-spin" aria-hidden>
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="3" fill="none" opacity="0.25" />
+      <path
+        d="M21 12a9 9 0 0 0-9-9"
+        stroke="currentColor"
+        strokeWidth="3"
+        fill="none"
+        strokeLinecap="round"
+      />
+    </svg>
   )
 }

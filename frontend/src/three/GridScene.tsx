@@ -1,229 +1,396 @@
+/**
+ * The board: terrain tiles, labels, reservoir, tanks, and the player's pipework.
+ *
+ * Interaction model (new):
+ *   left press on empty cell   → place, and start a paint stroke
+ *   left drag across cells     → keep placing; the whole stroke is one undo step
+ *   left click on placed asset → rotate it
+ *   right press / drag         → remove
+ *
+ * Painting matters because a typical run is 8-12 cells; placing those one click
+ * at a time was the bulk of the interaction cost.
+ */
+import { useCallback, useEffect, useMemo, useRef } from 'react'
 import { Text } from '@react-three/drei'
-import { ThreeEvent } from '@react-three/fiber'
+import { useThree, type ThreeEvent } from '@react-three/fiber'
+import * as THREE from 'three'
 import { useGameStore } from '@/store/gameStore'
-import { DEMAND_NODES, COLUMNS, ROWS, Direction } from '@/types'
+import type { PlacedAsset } from '@/types'
+import {
+  ASSET_COSTS,
+  BUDGET,
+  COLUMNS,
+  DEMAND_NODES,
+  Direction,
+  ROWS,
+  cellId,
+  isDemandCell,
+} from '@/types'
 import { computeRotatedPorts, getNeighbor, OPPOSITE } from '@/utils/portAlignment'
-import TerrainTile from './TerrainTile'
-import ReservoirModel from './ReservoirModel'
-import TankModel from './TankModel'
+import { analyseConnectivity } from '@/utils/pathfinding'
+import { AnimationClock } from './animatedMaterials'
+import AnimatedRiver from './AnimatedRiver'
+import AnimatedTrain from './AnimatedTrain'
+import GhostAsset from './GhostAsset'
 import PlacedAssetModel from './PlacedAssetModel'
 import PortIndicators from './PortIndicators'
-import AnimatedTrain from './AnimatedTrain'
-import AnimatedRiver from './AnimatedRiver'
+import ReservoirModel from './ReservoirModel'
+import TankModel from './TankModel'
+import TerrainProps from './TerrainProps'
+import TerrainTile, { type TileState } from './TerrainTile'
+import {
+  BOARD_CENTER,
+  CELL_SIZE,
+  GRID_DEPTH,
+  GRID_WIDTH,
+  GROUND_Y,
+  RESERVOIR_POS,
+  cellNoise,
+  cellToWorld,
+  tankOffsetX,
+} from './layout'
 
-const CELL_SIZE = 1.0
+type PaintMode = 'place' | 'remove'
 
 export default function GridScene() {
   const gridConfig = useGameStore((s) => s.gridConfig)
   const placedAssets = useGameStore((s) => s.placedAssets)
   const tankLevels = useGameStore((s) => s.tankLevels)
   const selectedAssetType = useGameStore((s) => s.selectedAssetType)
-  const placeAsset = useGameStore((s) => s.placeAsset)
-  const removeAsset = useGameStore((s) => s.removeAsset)
-  const rotateAsset = useGameStore((s) => s.rotateAsset)
   const playerState = useGameStore((s) => s.playerState)
+  const totalCost = useGameStore((s) => s.totalCost)
+  const simulationResult = useGameStore((s) => s.simulationResult)
 
-  // Convert grid position to 3D world coordinates
-  function cellToWorld(row: number, col: string): [number, number, number] {
-    const colIdx = COLUMNS.indexOf(col)
-    return [colIdx * CELL_SIZE, 0, (row - 1) * CELL_SIZE]
-  }
+  const designing = playerState === 'designing'
+  const showFlow = playerState === 'simulating' || playerState === 'results'
 
-  // Check if a demand node cell is connected to pipework and from which direction
-  function getDemandConnectionDirection(demandRow: number, demandCol: string): Direction | null {
-    const assetMap = new Map<string, typeof placedAssets[0]>()
-    for (const asset of placedAssets) {
-      assetMap.set(`${asset.row}_${asset.col}`, asset)
+  /** Which pipework is actually fed from the reservoir. */
+  const { reachable } = useMemo(() => analyseConnectivity(placedAssets), [placedAssets])
+
+  const assetByCell = useMemo(
+    () => new Map(placedAssets.map((a) => [cellId(a.row, a.col), a])),
+    [placedAssets],
+  )
+
+  /* --------------------------------------------------------- paint gesture */
+
+  const paintMode = useRef<PaintMode | null>(null)
+  const controls = useThree((s) => s.controls) as { enabled: boolean } | null
+
+  const applyAt = useCallback((row: number, col: string, mode: PaintMode) => {
+    const store = useGameStore.getState()
+    if (mode === 'place') store.placeAsset(row, col)
+    else store.removeAsset(row, col)
+  }, [])
+
+  /**
+   * Suspend the orbit controls for the duration of a stroke.
+   *
+   * OrbitControls applies rotation in its pointermove handler, and that handler
+   * returns early when `enabled` is false — so flipping the flag on pointerdown
+   * reliably stops the camera moving, regardless of listener ordering between
+   * R3F's event system and the controls.
+   */
+  const beginPaint = useCallback(
+    (mode: PaintMode) => {
+      paintMode.current = mode
+      if (controls) controls.enabled = false
+      useGameStore.getState().beginStroke()
+    },
+    [controls],
+  )
+
+  // A stroke can end anywhere — over a tile, over the sky, or outside the
+  // canvas entirely — so the release is handled on the window.
+  useEffect(() => {
+    function endPaint() {
+      if (paintMode.current === null) return
+      paintMode.current = null
+      if (controls) controls.enabled = true
+      useGameStore.getState().endStroke()
     }
-    // Check each adjacent cell for a port pointing toward this demand node
-    const allDirs: Direction[] = [Direction.North, Direction.East, Direction.South, Direction.West]
-    for (const dir of allDirs) {
-      const neighbor = getNeighbor(demandRow, demandCol, dir)
-      if (!neighbor) continue
-      const neighborAsset = assetMap.get(`${neighbor.row}_${neighbor.col}`)
-      if (neighborAsset) {
-        const ports = computeRotatedPorts(neighborAsset.asset_type, neighborAsset.rotation_degrees)
-        if (ports.includes(OPPOSITE[dir])) {
-          // This neighbor has a port pointing toward the demand cell from direction 'dir'
-          // That means the pipe enters the demand cell FROM direction 'dir'
-          return dir
-        }
+    window.addEventListener('pointerup', endPaint)
+    window.addEventListener('pointercancel', endPaint)
+    window.addEventListener('blur', endPaint)
+    return () => {
+      window.removeEventListener('pointerup', endPaint)
+      window.removeEventListener('pointercancel', endPaint)
+      window.removeEventListener('blur', endPaint)
+      // Never leave the camera locked if this unmounts mid-stroke.
+      if (controls) controls.enabled = true
+    }
+  }, [controls])
+
+  const handlePointerDown = useCallback(
+    (row: number, col: string, e: ThreeEvent<PointerEvent>) => {
+      if (!designing || isDemandCell(row, col)) return
+      e.stopPropagation()
+
+      const store = useGameStore.getState()
+      const occupied = store.placedAssets.some((a) => a.row === row && a.col === col)
+
+      // Right button removes, and drags to keep removing.
+      if (e.button === 2) {
+        beginPaint('remove')
+        store.removeAsset(row, col)
+        return
       }
-    }
-    return null
-  }
 
-  function handleCellClick(row: number, col: string, e: ThreeEvent<MouseEvent>) {
-    if (playerState !== 'designing') return
+      if (e.button !== 0) return
+
+      // Left click on an existing asset cycles its rotation. Not a stroke —
+      // dragging over neighbours shouldn't spin the whole run.
+      if (occupied) {
+        store.rotateAsset(row, col)
+        return
+      }
+
+      if (!store.selectedAssetType) return
+      beginPaint('place')
+      store.placeAsset(row, col)
+    },
+    [designing, beginPaint],
+  )
+
+  const handlePointerEnter = useCallback(
+    (row: number, col: string) => {
+      useGameStore.getState().setHoveredCell({ row, col })
+      if (!designing || isDemandCell(row, col)) return
+      if (paintMode.current) applyAt(row, col, paintMode.current)
+    },
+    [designing, applyAt],
+  )
+
+  const handlePointerLeave = useCallback((row: number, col: string) => {
+    const current = useGameStore.getState().hoveredCell
+    // Only clear if we're still the cell being reported, otherwise a fast move
+    // between tiles can clear the newly-entered one.
+    if (current?.row === row && current?.col === col) {
+      useGameStore.getState().setHoveredCell(null)
+    }
+  }, [])
+
+  const suppressContextMenu = useCallback((e: ThreeEvent<MouseEvent>) => {
+    e.nativeEvent.preventDefault()
     e.stopPropagation()
+  }, [])
 
-    const isDemand = DEMAND_NODES.some((d) => d.row === row && d.col === col)
-    if (isDemand) return
+  /* ------------------------------------------------------------ tile state */
 
-    const existing = placedAssets.find((a) => a.row === row && a.col === col)
-    if (existing) {
-      rotateAsset(row, col)
-      return
-    }
-
-    if (selectedAssetType) {
-      placeAsset(row, col)
-    }
-  }
-
-  function handleCellRightClick(row: number, col: string, e: ThreeEvent<MouseEvent>) {
-    if (playerState !== 'designing') return
-    e.stopPropagation()
-    removeAsset(row, col)
-  }
+  const tileState = useCallback(
+    (row: number, col: string, landType: string, installationCost: number): TileState => {
+      if (!designing) return 'idle'
+      if (landType.includes('demand')) return 'idle'
+      if (assetByCell.has(cellId(row, col))) return 'removable'
+      if (!selectedAssetType) return 'idle'
+      const affordable = totalCost + ASSET_COSTS[selectedAssetType] + installationCost <= BUDGET
+      return affordable ? 'placeable' : 'blocked'
+    },
+    [designing, assetByCell, selectedAssetType, totalCost],
+  )
 
   return (
     <group>
-      {/* Ground plane */}
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[2.5, -0.01, 2.5]} receiveShadow>
-        <planeGeometry args={[8, 8]} />
-        <meshLambertMaterial color="#2d5016" />
-      </mesh>
+      <AnimationClock />
+      <BoardPlinth />
+      <BoardLabels />
 
-      {/* Column labels - positioned above the grid */}
+      {/* Terrain */}
+      {gridConfig.map((cell) => {
+        const [x, , z] = cellToWorld(cell.row, cell.col)
+        const isDemand = cell.land_type.includes('demand')
+        return (
+          <group key={cellId(cell.row, cell.col)} position={[x, 0, z]}>
+            <TerrainTile
+              landType={cell.land_type}
+              state={tileState(cell.row, cell.col, cell.land_type, cell.installation_cost)}
+              lift={cellNoise(cell.row, cell.col) * 0.012}
+              onPointerDown={(e) => handlePointerDown(cell.row, cell.col, e)}
+              onPointerEnter={() => handlePointerEnter(cell.row, cell.col)}
+              onPointerLeave={() => handlePointerLeave(cell.row, cell.col)}
+              onContextMenu={suppressContextMenu}
+            >
+              <TerrainProps landType={cell.land_type} />
+              {!isDemand && cell.installation_cost > 0 && (
+                <CellCostLabel cost={cell.installation_cost} />
+              )}
+            </TerrainTile>
+          </group>
+        )
+      })}
+
+      <AnimatedTrain />
+      <AnimatedRiver />
+
+      {/* Source */}
+      <group position={RESERVOIR_POS}>
+        <ReservoirModel flowing={showFlow} />
+      </group>
+
+      {/* Demand tanks */}
+      {DEMAND_NODES.map((node) => {
+        const level = tankLevels[node.key] ?? 0
+        const [baseX, , baseZ] = cellToWorld(node.row, node.col)
+        const inletDir = findInletDirection(node.row, node.col, assetByCell)
+        return (
+          <group key={node.key} position={[baseX + tankOffsetX(node.col), 0, baseZ]}>
+            <TankModel
+              name={node.name}
+              fillFraction={level / node.twl}
+              showConnection={inletDir !== null}
+              connectionSide={node.col === COLUMNS[0] ? 'right' : 'left'}
+              connectingDirection={inletDir}
+              penalty={simulationResult?.individual_penalties?.[node.key] ?? 0}
+            />
+          </group>
+        )
+      })}
+
+      {/* Player pipework */}
+      {placedAssets.map((asset) => {
+        const [x, , z] = cellToWorld(asset.row, asset.col)
+        return (
+          <group key={cellId(asset.row, asset.col)} position={[x, 0, z]}>
+            <PlacedAssetModel
+              asset={asset}
+              wet={showFlow && reachable.has(cellId(asset.row, asset.col))}
+            />
+          </group>
+        )
+      })}
+
+      <GhostAsset />
+      <PortIndicators />
+    </group>
+  )
+}
+
+/**
+ * Direction from which pipework enters a demand cell, or null if nothing
+ * connects. Used to route the tank's inlet pipe to the right face.
+ */
+function findInletDirection(
+  row: number,
+  col: string,
+  assetByCell: Map<string, PlacedAsset>,
+): Direction | null {
+  for (const dir of [Direction.North, Direction.East, Direction.South, Direction.West]) {
+    const neighbor = getNeighbor(row, col, dir)
+    if (!neighbor) continue
+    const neighborAsset = assetByCell.get(cellId(neighbor.row, neighbor.col))
+    if (!neighborAsset) continue
+    const ports = computeRotatedPorts(neighborAsset.asset_type, neighborAsset.rotation_degrees)
+    // A neighbour to our `dir` connects if it has a port facing back at us.
+    if (ports.includes(OPPOSITE[dir])) return dir
+  }
+  return null
+}
+
+/* -------------------------------------------------------------- decoration */
+
+const MAT_PLINTH_TOP = new THREE.MeshStandardMaterial({
+  color: '#3f4a37',
+  roughness: 0.95,
+  metalness: 0,
+})
+const MAT_PLINTH_SIDE = new THREE.MeshStandardMaterial({
+  color: '#2b3324',
+  roughness: 1,
+  metalness: 0,
+})
+
+/**
+ * Base the tiles sit on, so the board reads as a built model.
+ *
+ * The margin has to clear the row/column labels, which sit one cell-width out
+ * from the edge tiles — otherwise they hang over the side onto the grass.
+ */
+function BoardPlinth() {
+  const [cx, , cz] = BOARD_CENTER
+  const margin = CELL_SIZE * 2
+  const w = GRID_WIDTH + margin
+  const d = GRID_DEPTH + margin
+  const h = 0.1
+
+  const materials = useMemo(
+    () => [
+      MAT_PLINTH_SIDE,
+      MAT_PLINTH_SIDE,
+      MAT_PLINTH_TOP,
+      MAT_PLINTH_SIDE,
+      MAT_PLINTH_SIDE,
+      MAT_PLINTH_SIDE,
+    ],
+    [],
+  )
+  const geometry = useMemo(() => new THREE.BoxGeometry(w, h, d), [w, h, d])
+
+  return (
+    <mesh geometry={geometry} material={materials} position={[cx, h / 2 - 0.001, cz]} receiveShadow />
+  )
+}
+
+/** Column letters and row numbers around the edge of the board. */
+function BoardLabels() {
+  const edge = CELL_SIZE * 0.82
+
+  return (
+    <group>
       {COLUMNS.map((col, idx) => (
         <Text
           key={`col-${col}`}
-          position={[idx * CELL_SIZE, 0.01, -0.9]}
+          position={[idx * CELL_SIZE, GROUND_Y + 0.005, -edge]}
           rotation={[-Math.PI / 2, 0, 0]}
-          fontSize={0.3}
-          color="#ffffff"
+          fontSize={0.24}
+          color="#e8f2fa"
           anchorX="center"
           anchorY="middle"
+          outlineWidth={0.012}
+          outlineColor="#1b2415"
         >
           {col}
         </Text>
       ))}
-
-      {/* Row labels - positioned to the left of the grid */}
       {ROWS.map((row) => (
         <Text
           key={`row-${row}`}
-          position={[-0.9, 0.01, (row - 1) * CELL_SIZE]}
+          position={[-edge, GROUND_Y + 0.005, (row - 1) * CELL_SIZE]}
           rotation={[-Math.PI / 2, 0, 0]}
-          fontSize={0.3}
-          color="#ffffff"
+          fontSize={0.24}
+          color="#e8f2fa"
           anchorX="center"
           anchorY="middle"
+          outlineWidth={0.012}
+          outlineColor="#1b2415"
         >
           {String(row)}
         </Text>
       ))}
-
-      {/* Grid cells */}
-      {gridConfig.map((cell) => {
-        const [x, , z] = cellToWorld(cell.row, cell.col)
-        const isDemand = cell.land_type.includes('demand')
-        const isPlaced = placedAssets.some((a) => a.row === cell.row && a.col === cell.col)
-
-        // Format label for the cell
-        const isDemandCell = cell.land_type.includes('demand')
-        let landLabel = cell.land_type
-          .replace(/_demand$/, '')
-          .replace(/_/g, ' ')
-          .replace(/\b\w/g, (c: string) => c.toUpperCase())
-        if (isDemandCell) landLabel += ' Demand'
-        const costLabel = cell.installation_cost > 0 ? `${(cell.installation_cost / 1000).toFixed(0)}k` : ''
-        const fullLabel = costLabel ? `${landLabel} ${costLabel}` : landLabel
-
-        return (
-          <group key={`${cell.row}-${cell.col}`} position={[x, 0, z]}>
-            <TerrainTile
-              landType={cell.land_type}
-              onClick={(e) => handleCellClick(cell.row, cell.col, e)}
-              onContextMenu={(e) => handleCellRightClick(cell.row, cell.col, e)}
-              isHighlighted={!isDemand && !isPlaced && !!selectedAssetType && playerState === 'designing'}
-            />
-            {/* Cell label with name and cost */}
-            <Text
-              position={[0, 0.02, -0.35]}
-              rotation={[-Math.PI / 2, 0, 0]}
-              fontSize={0.065}
-              color="#ffffff"
-              anchorX="center"
-              anchorY="middle"
-              outlineWidth={0.004}
-              outlineColor="#000000"
-            >
-              {fullLabel}
-            </Text>
-          </group>
-        )
-      })}
-
-      {/* Reservoir - positioned above the grid, outside */}
-      <group position={[0, 0, -1.5]}>
-        <ReservoirModel />
-      </group>
-
-      {/* Outlet pipe from reservoir to the edge of the grid (ends at column A label, z=-0.9) */}
-      {/* Reservoir legs go from y=0 to y=2.5. Pipe drops from bottom of tank (y=2.5) to ground. */}
-      {/* Then runs horizontally from z=-1.5 to z=-0.5 (just before the grid starts at z=0) */}
-
-      {/* Vertical segment: drops from reservoir tank bottom (y=2.5) to ground level (y=0.08) */}
-      <mesh position={[0, 1.25, -1.5]} castShadow>
-        <cylinderGeometry args={[0.04, 0.04, 2.44, 10]} />
-        <meshStandardMaterial color="#78909C" metalness={0.3} roughness={0.6} />
-      </mesh>
-      {/* Elbow joint at ground level */}
-      <mesh position={[0, 0.08, -1.5]} castShadow>
-        <sphereGeometry args={[0.05, 8, 8]} />
-        <meshStandardMaterial color="#607D8B" metalness={0.3} roughness={0.6} />
-      </mesh>
-      {/* Horizontal segment: from z=-1.5 to z=-0.5 (stops at grid edge, at the "A" label) */}
-      <mesh position={[0, 0.08, -1.0]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-        <cylinderGeometry args={[0.04, 0.04, 1.0, 10]} />
-        <meshStandardMaterial color="#78909C" metalness={0.3} roughness={0.6} />
-      </mesh>
-      {/* End cap / flange at grid edge (z=-0.5) */}
-      <mesh position={[0, 0.08, -0.5]} rotation={[Math.PI / 2, 0, 0]} castShadow>
-        <cylinderGeometry args={[0.055, 0.055, 0.03, 10]} />
-        <meshStandardMaterial color="#546E7A" metalness={0.4} roughness={0.5} />
-      </mesh>
-
-      {/* Animated train spanning railway cells (Row 1: B1-F1) */}
-      <AnimatedTrain />
-
-      {/* Animated river spanning river cells (Row 4: A4-F4) */}
-      <AnimatedRiver />
-
-      {/* Demand node tanks - positioned further outside the board */}
-      {DEMAND_NODES.map((node) => {
-        const level = tankLevels[node.key] ?? 0
-        const fraction = level / node.twl
-        const [baseX, , baseZ] = cellToWorld(node.row, node.col)
-        // Tanks further outside: col A to the left (-0.7), col F to the right (+0.7)
-        const xOffset = node.col === 'A' ? -0.7 : node.col === 'F' ? 0.7 : 0
-        const connectingDir = getDemandConnectionDirection(node.row, node.col)
-        const connected = connectingDir !== null
-        const connectionSide = node.col === 'A' ? 'right' as const : 'left' as const
-        return (
-          <group key={node.key} position={[baseX + xOffset, 0, baseZ]}>
-            <TankModel
-              name={node.name}
-              fillFraction={fraction}
-              showConnection={connected}
-              connectionSide={connectionSide}
-              connectingDirection={connectingDir}
-            />
-          </group>
-        )
-      })}
-
-      {/* Placed assets */}
-      {placedAssets.map((asset) => (
-        <group key={`${asset.row}-${asset.col}`} position={cellToWorld(asset.row, asset.col)}>
-          <PlacedAssetModel asset={asset} />
-        </group>
-      ))}
-
-      {/* Port alignment indicators */}
-      <PortIndicators />
     </group>
+  )
+}
+
+/**
+ * Installation cost stamped on the tile.
+ *
+ * The original also printed the land type on every cell, which produced 36
+ * overlapping strings across the board. The land type is now conveyed by the
+ * tile colour and its 3D props, with the full name available on hover, so only
+ * the number the player is actually budgeting against is drawn here.
+ */
+function CellCostLabel({ cost }: { cost: number }) {
+  return (
+    <Text
+      position={[0, 0.004, 0.36]}
+      rotation={[-Math.PI / 2, 0, 0]}
+      fontSize={0.088}
+      color="#f8fafc"
+      anchorX="center"
+      anchorY="middle"
+      outlineWidth={0.007}
+      outlineColor="#0f172a"
+    >
+      {`${(cost / 1000).toFixed(0)}k`}
+    </Text>
   )
 }
