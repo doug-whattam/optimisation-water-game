@@ -91,7 +91,7 @@ export default function Lobby() {
               />
             </svg>
             <div>
-              <h1 className="text-xl font-semibold tracking-tight text-slate-50">OptiClean</h1>
+              <h1 className="text-xl font-semibold tracking-tight text-slate-50">OptiChallenge</h1>
               <p className="text-xs text-slate-500">Water network optimisation</p>
             </div>
           </div>

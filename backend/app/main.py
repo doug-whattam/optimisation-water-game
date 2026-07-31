@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="OptiClean Water Game",
+    title="OptiChallenge Water Game",
     description="3D Clean Water Network Optimization Game API",
     version="1.0.0",
     lifespan=lifespan,
