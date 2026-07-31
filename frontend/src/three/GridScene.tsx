@@ -307,7 +307,9 @@ const MAT_PLINTH_SIDE = new THREE.MeshStandardMaterial({
  */
 function BoardPlinth() {
   const [cx, , cz] = BOARD_CENTER
-  const margin = CELL_SIZE * 2
+  // 2.5 cells of margin: enough for the labels plus the train's return leg and
+  // its turn past F, which both sit outside the tile grid.
+  const margin = CELL_SIZE * 2.5
   const w = GRID_WIDTH + margin
   const d = GRID_DEPTH + margin
   const h = 0.1
@@ -330,9 +332,14 @@ function BoardPlinth() {
   )
 }
 
-/** Column letters and row numbers around the edge of the board. */
+/**
+ * Column letters and row numbers around the edge of the board.
+ *
+ * Pulled in from 0.82 to 0.66 so the column letters sit in the gap between the
+ * tile edge and the train's return leg at z=-0.98 rather than under it.
+ */
 function BoardLabels() {
-  const edge = CELL_SIZE * 0.82
+  const edge = CELL_SIZE * 0.66
 
   return (
     <group>

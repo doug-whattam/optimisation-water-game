@@ -185,26 +185,40 @@ function RuralProps() {
   )
 }
 
+/**
+ * Trackside furniture only.
+ *
+ * The rails and sleepers used to be drawn here, per tile, which could only cover
+ * the straight run across row 1. The train now runs a closed circuit that leaves
+ * the board at both ends, so the track is built as one continuous piece in
+ * AnimatedTrain and drawing it here as well would double it up.
+ */
 function RailwayProps() {
-  // Static rails and sleepers only — the animated train is rendered at GridScene level
   return (
     <group>
-      {/* Rails */}
-      <mesh position={[0, 0.01, -0.1]} rotation={[0, 0, 0]}>
-        <boxGeometry args={[0.9, 0.01, 0.03]} />
-        <meshStandardMaterial roughness={0.8} metalness={0} color="#4E342E" />
+      {/* Signal post, set back on the south side clear of the sleepers */}
+      <mesh position={[0.3, 0.075, 0.34]} castShadow>
+        <cylinderGeometry args={[0.008, 0.008, 0.15, 6]} />
+        <meshStandardMaterial roughness={0.6} metalness={0.4} color="#455A64" />
       </mesh>
-      <mesh position={[0, 0.01, 0.1]} rotation={[0, 0, 0]}>
-        <boxGeometry args={[0.9, 0.01, 0.03]} />
-        <meshStandardMaterial roughness={0.8} metalness={0} color="#4E342E" />
+      <mesh position={[0.3, 0.16, 0.34]} castShadow>
+        <boxGeometry args={[0.012, 0.05, 0.028]} />
+        <meshStandardMaterial roughness={0.7} metalness={0.2} color="#263238" />
       </mesh>
-      {/* Sleepers */}
-      {[-0.35, -0.2, -0.05, 0.1, 0.25].map((x, i) => (
-        <mesh key={i} position={[x, 0.005, 0]}>
-          <boxGeometry args={[0.06, 0.01, 0.3]} />
-          <meshStandardMaterial roughness={0.8} metalness={0} color="#3E2723" />
-        </mesh>
-      ))}
+      <mesh position={[0.286, 0.172, 0.34]}>
+        <sphereGeometry args={[0.008, 8, 6]} />
+        <meshBasicMaterial color="#66BB6A" />
+      </mesh>
+      <mesh position={[0.286, 0.15, 0.34]}>
+        <sphereGeometry args={[0.008, 8, 6]} />
+        <meshBasicMaterial color="#5D4037" />
+      </mesh>
+
+      {/* Ballast spill either side of the corridor */}
+      <mesh position={[-0.28, 0.004, -0.3]} rotation={[-Math.PI / 2, 0, 0.3]}>
+        <planeGeometry args={[0.22, 0.1]} />
+        <meshStandardMaterial roughness={1} metalness={0} color="#6b5340" />
+      </mesh>
     </group>
   )
 }
