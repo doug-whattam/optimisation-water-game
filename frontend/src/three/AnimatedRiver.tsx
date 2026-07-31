@@ -1,82 +1,93 @@
 /**
- * Animated river spanning all river cells (Row 4: A4-F4).
- * Uses per-cell wave effects that stay strictly within each cell's 0.95x0.95 bounds.
- * World space: row 4 = z=3.0, columns A-F = x from 0 to 5.0.
+ * Flowing river across row 4.
+ *
+ * Replaces the previous approach (stacked translucent planes with a few small
+ * quads oscillating on top) with a single shader evaluated per river cell. One
+ * shared material, one quad per cell, so the water stays exactly inside each
+ * tile footprint while the flow reads as continuous across the row.
  */
-import { useRef } from 'react'
-import { useFrame } from '@react-three/fiber'
+import { COLUMNS } from '@/types'
+import * as THREE from 'three'
+import { registerAnimated } from './animatedMaterials'
+import { CELL_SIZE, GROUND_Y, TILE_SIZE, colToIndex } from './layout'
 
-const RIVER_Z = 3.0 // Row 4 = z = (4-1)*1.0 = 3.0
+/** Row 4 in world Z. */
+const RIVER_ROW = 4
+const RIVER_Z = (RIVER_ROW - 1) * CELL_SIZE
+
+const GEOM = new THREE.PlaneGeometry(TILE_SIZE, TILE_SIZE)
+
+/**
+ * `uOffset` shifts the noise domain per cell so neighbouring tiles form one
+ * continuous stream rather than six copies of the same pattern.
+ */
+const MAT_RIVER = registerAnimated(
+  new THREE.ShaderMaterial({
+    transparent: true,
+    uniforms: {
+      uTime: { value: 0 },
+      uDeep: { value: new THREE.Color('#0b3f8f') },
+      uMid: { value: new THREE.Color('#1c6fd0') },
+      uFoam: { value: new THREE.Color('#cdeeff') },
+    },
+    vertexShader: /* glsl */ `
+      varying vec2 vUv;
+      varying float vOffset;
+      void main() {
+        vUv = uv;
+        // Instance position in world X seeds the pattern so cells line up.
+        vOffset = (modelMatrix * vec4(0.0, 0.0, 0.0, 1.0)).x;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: /* glsl */ `
+      uniform float uTime;
+      uniform vec3  uDeep;
+      uniform vec3  uMid;
+      uniform vec3  uFoam;
+      varying vec2  vUv;
+      varying float vOffset;
+
+      void main() {
+        // Continuous coordinate along the row: cell offset plus local uv.
+        float x = vOffset + vUv.x;
+        float y = vUv.y;
+
+        // Layered travelling waves. Different speeds and directions give the
+        // shear you see in real open-channel flow.
+        float w1 = sin((x * 7.0 + y * 2.0) - uTime * 1.8);
+        float w2 = sin((x * 13.0 - y * 4.0) - uTime * 2.7);
+        float w3 = sin((x * 23.0 + y * 9.0) - uTime * 4.1);
+        float h = w1 * 0.5 + w2 * 0.32 + w3 * 0.18;
+
+        vec3 col = mix(uDeep, uMid, smoothstep(-0.6, 0.7, h));
+
+        // Foam only on the steepest crests.
+        float foam = smoothstep(0.72, 0.98, h);
+        col = mix(col, uFoam, foam * 0.7);
+
+        // Slight darkening toward the banks.
+        float bank = smoothstep(0.0, 0.16, min(y, 1.0 - y));
+        col *= 0.78 + 0.22 * bank;
+
+        gl_FragColor = vec4(col, 0.93);
+      }
+    `,
+  }),
+)
 
 export default function AnimatedRiver() {
-  // Use a single time ref to animate all cells uniformly
-  const timeRef = useRef(0)
-
-  useFrame((_, delta) => {
-    timeRef.current += delta
-  })
-
   return (
     <group>
-      {/* Render per-cell river — each cell gets its own contained water */}
-      {[0, 1, 2, 3, 4, 5].map((colIdx) => (
-        <RiverCell key={colIdx} x={colIdx} z={RIVER_Z} timeRef={timeRef} />
+      {COLUMNS.map((col) => (
+        <mesh
+          key={col}
+          geometry={GEOM}
+          material={MAT_RIVER}
+          position={[colToIndex(col) * CELL_SIZE, GROUND_Y + 0.008, RIVER_Z]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        />
       ))}
-    </group>
-  )
-}
-
-function RiverCell({ x, z, timeRef }: { x: number; z: number; timeRef: React.MutableRefObject<number> }) {
-  const wave1Ref = useRef<any>(null)
-  const wave2Ref = useRef<any>(null)
-
-  useFrame(() => {
-    const t = timeRef.current
-    // Oscillate wave positions within cell bounds (max ±0.2 from center)
-    if (wave1Ref.current) {
-      wave1Ref.current.position.x = Math.sin(t * 1.2 + x) * 0.15
-    }
-    if (wave2Ref.current) {
-      wave2Ref.current.position.x = Math.sin(t * 0.9 + x * 2) * 0.12
-    }
-  })
-
-  return (
-    <group position={[x, 0, z]}>
-      {/* Base water — fits exactly within cell (0.95 x 0.95) */}
-      <mesh position={[0, 0.006, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[0.93, 0.93]} />
-        <meshPhongMaterial color="#0D47A1" transparent opacity={0.8} shininess={100} />
-      </mesh>
-
-      {/* Mid layer */}
-      <mesh position={[0, 0.009, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[0.85, 0.6]} />
-        <meshPhongMaterial color="#1565C0" transparent opacity={0.45} shininess={80} />
-      </mesh>
-
-      {/* Wave highlights - oscillate within cell, max extent stays inside 0.93/2 = 0.465 */}
-      <group ref={wave1Ref} position={[0, 0.012, 0]}>
-        <mesh position={[0.1, 0, 0.05]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[0.12, 0.02]} />
-          <meshBasicMaterial color="#42A5F5" transparent opacity={0.4} />
-        </mesh>
-        <mesh position={[-0.15, 0, -0.1]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[0.1, 0.015]} />
-          <meshBasicMaterial color="#42A5F5" transparent opacity={0.35} />
-        </mesh>
-      </group>
-
-      <group ref={wave2Ref} position={[0, 0.014, 0]}>
-        <mesh position={[-0.05, 0, 0.15]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[0.09, 0.015]} />
-          <meshBasicMaterial color="#64B5F6" transparent opacity={0.3} />
-        </mesh>
-        <mesh position={[0.2, 0, -0.08]} rotation={[-Math.PI / 2, 0, 0]}>
-          <planeGeometry args={[0.08, 0.012]} />
-          <meshBasicMaterial color="#64B5F6" transparent opacity={0.25} />
-        </mesh>
-      </group>
     </group>
   )
 }

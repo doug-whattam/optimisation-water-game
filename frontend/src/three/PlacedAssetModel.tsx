@@ -1,150 +1,92 @@
+/**
+ * Renders one placed pipework asset, assembled from the shared primitives in
+ * PipeParts.
+ *
+ * Base orientation (0°) matches ASSET_PORTS in types: north is -Z, east is +X.
+ * A clockwise port rotation of `d` degrees corresponds to a -d rotation about Y
+ * in three.js coordinates.
+ */
+import { memo } from 'react'
 import type { PlacedAsset } from '@/types'
-import { AssetType } from '@/types'
-import { useGameStore } from '@/store/gameStore'
-
-const PIPE_RADIUS = 0.06
-const PIPE_OPACITY = 0.4
-const PIPE_COLOR = '#B0C4DE'
-const WATER_COLOR = '#2196F3'
+import { AssetType, Direction } from '@/types'
+import { Bend, Collar, Flange, Gauge, StraightRun, Stub, type PipeSkin } from './PipeParts'
 
 interface Props {
   asset: PlacedAsset
+  /** Animate water through this asset (it is fed from the reservoir). */
+  wet?: boolean
+  skin?: PipeSkin
 }
 
-export default function PlacedAssetModel({ asset }: Props) {
-  const playerState = useGameStore((s) => s.playerState)
-  const showWater = playerState === 'simulating' || playerState === 'results'
-
-  const rotationY = -(asset.rotation_degrees * Math.PI) / 180
-
+function PlacedAssetModel({ asset, wet = false, skin = 'metal' }: Props) {
   return (
-    <group rotation={[0, rotationY, 0]}>
-      {renderAssetGeometry(asset.asset_type, showWater)}
+    <group rotation={[0, -(asset.rotation_degrees * Math.PI) / 180, 0]}>
+      <AssetGeometry type={asset.asset_type} wet={wet} skin={skin} />
     </group>
   )
 }
 
-function renderAssetGeometry(type: AssetType, showWater: boolean) {
-  const halfCell = 0.475
+export function AssetGeometry({
+  type,
+  wet = false,
+  skin = 'metal',
+}: {
+  type: AssetType
+  wet?: boolean
+  skin?: PipeSkin
+}) {
+  const solid = skin === 'metal'
 
   switch (type) {
     case AssetType.Pipe:
       return (
-        <group>
-          {/* Pipe from north to south (along Z axis) */}
-          <mesh position={[0, PIPE_RADIUS + 0.02, 0]} rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[PIPE_RADIUS, PIPE_RADIUS, halfCell * 2, 12]} />
-            <meshPhongMaterial color={PIPE_COLOR} transparent opacity={PIPE_OPACITY} />
-          </mesh>
-          {showWater && (
-            <mesh position={[0, PIPE_RADIUS + 0.02, 0]} rotation={[Math.PI / 2, 0, 0]}>
-              <cylinderGeometry args={[PIPE_RADIUS * 0.7, PIPE_RADIUS * 0.7, halfCell * 2, 8]} />
-              <meshPhongMaterial color={WATER_COLOR} transparent opacity={0.7} />
-            </mesh>
-          )}
-        </group>
+        <>
+          <StraightRun wet={wet} skin={skin} />
+          <Flange dir={Direction.North} skin={skin} />
+          <Flange dir={Direction.South} skin={skin} />
+        </>
       )
 
     case AssetType.Elbow:
       return (
-        <group>
-          {/* North segment (half pipe going up in Z-) */}
-          <mesh position={[0, PIPE_RADIUS + 0.02, -halfCell / 2]} rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[PIPE_RADIUS, PIPE_RADIUS, halfCell, 12]} />
-            <meshPhongMaterial color={PIPE_COLOR} transparent opacity={PIPE_OPACITY} />
-          </mesh>
-          {/* East segment (half pipe going right in X+) */}
-          <mesh position={[halfCell / 2, PIPE_RADIUS + 0.02, 0]} rotation={[0, 0, Math.PI / 2]}>
-            <cylinderGeometry args={[PIPE_RADIUS, PIPE_RADIUS, halfCell, 12]} />
-            <meshPhongMaterial color={PIPE_COLOR} transparent opacity={PIPE_OPACITY} />
-          </mesh>
-          {/* Joint sphere */}
-          <mesh position={[0, PIPE_RADIUS + 0.02, 0]}>
-            <sphereGeometry args={[PIPE_RADIUS * 1.2, 12, 12]} />
-            <meshPhongMaterial color={PIPE_COLOR} transparent opacity={PIPE_OPACITY} />
-          </mesh>
-          {showWater && (
-            <>
-              <mesh position={[0, PIPE_RADIUS + 0.02, -halfCell / 2]} rotation={[Math.PI / 2, 0, 0]}>
-                <cylinderGeometry args={[PIPE_RADIUS * 0.7, PIPE_RADIUS * 0.7, halfCell, 8]} />
-                <meshPhongMaterial color={WATER_COLOR} transparent opacity={0.7} />
-              </mesh>
-              <mesh position={[halfCell / 2, PIPE_RADIUS + 0.02, 0]} rotation={[0, 0, Math.PI / 2]}>
-                <cylinderGeometry args={[PIPE_RADIUS * 0.7, PIPE_RADIUS * 0.7, halfCell, 8]} />
-                <meshPhongMaterial color={WATER_COLOR} transparent opacity={0.7} />
-              </mesh>
-            </>
-          )}
-        </group>
+        <>
+          <Bend wet={wet} skin={skin} />
+          <Flange dir={Direction.North} skin={skin} />
+          <Flange dir={Direction.East} skin={skin} />
+        </>
       )
 
     case AssetType.Tee:
       return (
-        <group>
-          {/* North-South pipe */}
-          <mesh position={[0, PIPE_RADIUS + 0.02, 0]} rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[PIPE_RADIUS, PIPE_RADIUS, halfCell * 2, 12]} />
-            <meshPhongMaterial color={PIPE_COLOR} transparent opacity={PIPE_OPACITY} />
-          </mesh>
-          {/* East branch */}
-          <mesh position={[halfCell / 2, PIPE_RADIUS + 0.02, 0]} rotation={[0, 0, Math.PI / 2]}>
-            <cylinderGeometry args={[PIPE_RADIUS, PIPE_RADIUS, halfCell, 12]} />
-            <meshPhongMaterial color={PIPE_COLOR} transparent opacity={PIPE_OPACITY} />
-          </mesh>
-          {/* Joint */}
-          <mesh position={[0, PIPE_RADIUS + 0.02, 0]}>
-            <sphereGeometry args={[PIPE_RADIUS * 1.3, 12, 12]} />
-            <meshPhongMaterial color={PIPE_COLOR} transparent opacity={PIPE_OPACITY} />
-          </mesh>
-          {showWater && (
-            <>
-              <mesh position={[0, PIPE_RADIUS + 0.02, 0]} rotation={[Math.PI / 2, 0, 0]}>
-                <cylinderGeometry args={[PIPE_RADIUS * 0.7, PIPE_RADIUS * 0.7, halfCell * 2, 8]} />
-                <meshPhongMaterial color={WATER_COLOR} transparent opacity={0.7} />
-              </mesh>
-              <mesh position={[halfCell / 2, PIPE_RADIUS + 0.02, 0]} rotation={[0, 0, Math.PI / 2]}>
-                <cylinderGeometry args={[PIPE_RADIUS * 0.7, PIPE_RADIUS * 0.7, halfCell, 8]} />
-                <meshPhongMaterial color={WATER_COLOR} transparent opacity={0.7} />
-              </mesh>
-            </>
-          )}
-        </group>
+        <>
+          <StraightRun wet={wet} skin={skin} />
+          <Stub dir={Direction.East} wet={wet} skin={skin} />
+          <Collar skin={skin} />
+          <Flange dir={Direction.North} skin={skin} />
+          <Flange dir={Direction.South} skin={skin} />
+          <Flange dir={Direction.East} skin={skin} />
+          {solid && <Gauge />}
+        </>
       )
 
     case AssetType.Cross:
       return (
-        <group>
-          {/* North-South pipe */}
-          <mesh position={[0, PIPE_RADIUS + 0.02, 0]} rotation={[Math.PI / 2, 0, 0]}>
-            <cylinderGeometry args={[PIPE_RADIUS, PIPE_RADIUS, halfCell * 2, 12]} />
-            <meshPhongMaterial color={PIPE_COLOR} transparent opacity={PIPE_OPACITY} />
-          </mesh>
-          {/* East-West pipe */}
-          <mesh position={[0, PIPE_RADIUS + 0.02, 0]} rotation={[0, 0, Math.PI / 2]}>
-            <cylinderGeometry args={[PIPE_RADIUS, PIPE_RADIUS, halfCell * 2, 12]} />
-            <meshPhongMaterial color={PIPE_COLOR} transparent opacity={PIPE_OPACITY} />
-          </mesh>
-          {/* Joint */}
-          <mesh position={[0, PIPE_RADIUS + 0.02, 0]}>
-            <sphereGeometry args={[PIPE_RADIUS * 1.4, 12, 12]} />
-            <meshPhongMaterial color={PIPE_COLOR} transparent opacity={PIPE_OPACITY} />
-          </mesh>
-          {showWater && (
-            <>
-              <mesh position={[0, PIPE_RADIUS + 0.02, 0]} rotation={[Math.PI / 2, 0, 0]}>
-                <cylinderGeometry args={[PIPE_RADIUS * 0.7, PIPE_RADIUS * 0.7, halfCell * 2, 8]} />
-                <meshPhongMaterial color={WATER_COLOR} transparent opacity={0.7} />
-              </mesh>
-              <mesh position={[0, PIPE_RADIUS + 0.02, 0]} rotation={[0, 0, Math.PI / 2]}>
-                <cylinderGeometry args={[PIPE_RADIUS * 0.7, PIPE_RADIUS * 0.7, halfCell * 2, 8]} />
-                <meshPhongMaterial color={WATER_COLOR} transparent opacity={0.7} />
-              </mesh>
-            </>
-          )}
-        </group>
+        <>
+          <StraightRun wet={wet} skin={skin} />
+          <Stub dir={Direction.East} wet={wet} skin={skin} />
+          <Stub dir={Direction.West} wet={wet} skin={skin} />
+          <Collar skin={skin} />
+          <Flange dir={Direction.North} skin={skin} />
+          <Flange dir={Direction.South} skin={skin} />
+          <Flange dir={Direction.East} skin={skin} />
+          <Flange dir={Direction.West} skin={skin} />
+          {solid && <Gauge />}
+        </>
       )
 
     default:
       return null
   }
 }
+
+export default memo(PlacedAssetModel)

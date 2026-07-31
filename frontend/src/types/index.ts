@@ -19,19 +19,66 @@ export const LAND_TYPE_COSTS: Record<LandType, number> = {
   [LandType.CulturalHeritage]: 5500,
 }
 
+/**
+ * Tile albedo colours.
+ *
+ * Tuned to sit under physically-based lighting: the previous values were
+ * near-saturated primaries (e.g. #7CFC00 lawn green) which blow out once a
+ * sun light and tone mapping are applied. These are desaturated equivalents
+ * that keep each land type distinguishable while reading as real ground.
+ */
 export const LAND_TYPE_COLORS: Record<string, string> = {
-  rural: '#7CFC00',
-  suburban: '#F0E68C',
-  urban: '#A9A9A9',
-  railway: '#8B4513',
-  forest: '#228B22',
-  river: '#4169E1',
-  cultural_heritage: '#DAA520',
-  reservoir: '#87CEEB',
-  residential_demand: '#FFB74D',
-  hospital_demand: '#EF5350',
-  industrial_demand: '#78909C',
-  commercial_demand: '#AB47BC',
+  rural: '#7fa34e',
+  suburban: '#cdb978',
+  urban: '#8b93a1',
+  railway: '#8a6647',
+  forest: '#3d7340',
+  river: '#2f5fa8',
+  cultural_heritage: '#bd9a4a',
+  reservoir: '#6ca8c4',
+  residential_demand: '#c98f4a',
+  hospital_demand: '#c25d5a',
+  industrial_demand: '#6a7a86',
+  commercial_demand: '#8b5aa3',
+}
+
+/** Colour of the exposed earth on the side walls of each extruded tile. */
+export const LAND_TYPE_EDGE_COLORS: Record<string, string> = {
+  rural: '#5c4632',
+  suburban: '#6b5539',
+  urban: '#4a4f58',
+  railway: '#513c2b',
+  forest: '#3b3527',
+  river: '#2a3f5e',
+  cultural_heritage: '#6b5730',
+  reservoir: '#3a5a68',
+  residential_demand: '#6b4a2c',
+  hospital_demand: '#6b3634',
+  industrial_demand: '#3d464e',
+  commercial_demand: '#4d3159',
+}
+
+/** Human-readable land type names for tooltips and legends. */
+export const LAND_TYPE_LABELS: Record<string, string> = {
+  rural: 'Rural',
+  suburban: 'Suburban',
+  urban: 'Urban',
+  railway: 'Railway',
+  forest: 'Forest',
+  river: 'River',
+  cultural_heritage: 'Cultural Heritage',
+  reservoir: 'Reservoir',
+  residential_demand: 'Residential Demand',
+  hospital_demand: 'Hospital Demand',
+  industrial_demand: 'Industrial Demand',
+  commercial_demand: 'Commercial Demand',
+}
+
+export function formatLandType(landType: string): string {
+  return (
+    LAND_TYPE_LABELS[landType] ??
+    landType.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())
+  )
 }
 
 // Asset types
@@ -105,6 +152,30 @@ export const DEMAND_NODES: DemandNode[] = [
 export const BUDGET = 100_000
 export const COLUMNS = ['A', 'B', 'C', 'D', 'E', 'F']
 export const ROWS = [1, 2, 3, 4, 5, 6]
+
+/** Cell where the reservoir outlet enters the grid (from the north). */
+export const RESERVOIR_ENTRY = { row: 1, col: 'A' } as const
+
+export function isDemandCell(row: number, col: string): boolean {
+  return DEMAND_NODES.some((d) => d.row === row && d.col === col)
+}
+
+export function cellId(row: number, col: string): string {
+  return `${row}_${col}`
+}
+
+/** Grid label as players read it off the board, e.g. "C4". */
+export function cellLabel(row: number, col: string): string {
+  return `${col}${row}`
+}
+
+/** Number-key shortcuts, kept beside the asset definitions so they can't drift. */
+export const ASSET_SHORTCUTS: Record<AssetType, string> = {
+  [AssetType.Pipe]: '1',
+  [AssetType.Elbow]: '2',
+  [AssetType.Tee]: '3',
+  [AssetType.Cross]: '4',
+}
 
 // Session & multiplayer
 export interface SessionInfo {

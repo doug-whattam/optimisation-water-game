@@ -1,62 +1,76 @@
 /**
- * Client-side connectivity validation using BFS from reservoir to demand nodes.
+ * Client-side connectivity analysis: BFS from the reservoir outlet through
+ * port-aligned pipework.
+ *
+ * The original module only answered "is anything connected?". It now returns the
+ * full reachable set, which lets the 3D scene animate water only in pipes that
+ * are actually fed — dead-end spurs stay dry, which is a much clearer signal to
+ * the player than filling every pipe on the board.
  */
-import { PlacedAsset, DEMAND_NODES } from '@/types'
+import { PlacedAsset, DEMAND_NODES, RESERVOIR_ENTRY, cellId } from '@/types'
 import { computeRotatedPorts, getNeighbor, OPPOSITE } from '@/utils/portAlignment'
 
-// Reservoir is outside grid, connects into A1 from north
+export interface Connectivity {
+  /** Cell ids (`row_col`) of pipework fed from the reservoir. */
+  reachable: Set<string>
+  /** Keys of demand nodes that pipework reaches. */
+  connectedDemands: Set<string>
+}
 
-export function hasValidPath(placedAssets: PlacedAsset[]): boolean {
+export function analyseConnectivity(placedAssets: PlacedAsset[]): Connectivity {
   const assetMap = new Map<string, PlacedAsset>()
   for (const asset of placedAssets) {
-    assetMap.set(`${asset.row}_${asset.col}`, asset)
+    assetMap.set(cellId(asset.row, asset.col), asset)
   }
 
-  const visited = new Set<string>()
-  const queue: string[] = []
+  const reachable = new Set<string>()
+  const connectedDemands = new Set<string>()
 
-  // Reservoir connects into A1 from above (vertically).
-  // Any asset placed at A1 is automatically connected to the reservoir
-  // regardless of port direction — the pipe enters from above.
-  const entryKey = '1_A'
-  const entryAsset = assetMap.get(entryKey)
-  if (!entryAsset) return false
+  // The reservoir drops into the entry cell from above, so whatever sits there
+  // is fed regardless of its port orientation.
+  const entryKey = cellId(RESERVOIR_ENTRY.row, RESERVOIR_ENTRY.col)
+  if (!assetMap.has(entryKey)) return { reachable, connectedDemands }
 
-  // No port direction check needed — reservoir connects unconditionally
-  visited.add(entryKey)
-  queue.push(entryKey)
+  reachable.add(entryKey)
+  const queue: string[] = [entryKey]
 
-  // BFS through connected assets
   while (queue.length > 0) {
     const current = queue.shift()!
-    const currentAsset = assetMap.get(current)
-    if (!currentAsset) continue
+    const asset = assetMap.get(current)
+    if (!asset) continue
 
-    const currentPorts = computeRotatedPorts(currentAsset.asset_type, currentAsset.rotation_degrees)
-
-    for (const dir of currentPorts) {
-      const neighbor = getNeighbor(currentAsset.row, currentAsset.col, dir)
+    for (const dir of computeRotatedPorts(asset.asset_type, asset.rotation_degrees)) {
+      const neighbor = getNeighbor(asset.row, asset.col, dir)
       if (!neighbor) continue
-      const key = `${neighbor.row}_${neighbor.col}`
-      if (visited.has(key)) continue
 
-      // Is it a demand node? They accept from any direction.
-      const isDemand = DEMAND_NODES.some(d => d.row === neighbor.row && d.col === neighbor.col)
-      if (isDemand) {
-        return true // Found a path!
+      const demand = DEMAND_NODES.find((d) => d.row === neighbor.row && d.col === neighbor.col)
+      if (demand) {
+        // Tanks accept an inlet from any face.
+        connectedDemands.add(demand.key)
+        continue
       }
 
-      // Is it a placed asset with a matching port?
+      const key = cellId(neighbor.row, neighbor.col)
+      if (reachable.has(key)) continue
+
       const neighborAsset = assetMap.get(key)
-      if (neighborAsset) {
-        const neighborPorts = computeRotatedPorts(neighborAsset.asset_type, neighborAsset.rotation_degrees)
-        if (neighborPorts.includes(OPPOSITE[dir])) {
-          visited.add(key)
-          queue.push(key)
-        }
+      if (!neighborAsset) continue
+
+      const neighborPorts = computeRotatedPorts(
+        neighborAsset.asset_type,
+        neighborAsset.rotation_degrees,
+      )
+      if (neighborPorts.includes(OPPOSITE[dir])) {
+        reachable.add(key)
+        queue.push(key)
       }
     }
   }
 
-  return false
+  return { reachable, connectedDemands }
+}
+
+/** True when at least one demand node is fed from the reservoir. */
+export function hasValidPath(placedAssets: PlacedAsset[]): boolean {
+  return analyseConnectivity(placedAssets).connectedDemands.size > 0
 }
