@@ -43,7 +43,7 @@ export default function HeaderBar({ onShowHelp }: Props) {
           />
         </svg>
         <div className="leading-none">
-          <span className="text-sm font-semibold tracking-tight text-slate-100">OptiClean</span>
+          <span className="text-sm font-semibold tracking-tight text-slate-100">OptiChallenge</span>
           <span className="ml-2 hidden text-[11px] text-slate-500 lg:inline">
             Water Network Optimisation
           </span>

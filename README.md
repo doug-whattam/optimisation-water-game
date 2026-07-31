@@ -1,4 +1,4 @@
-# OptiClean Water Game
+# OptiChallenge Water Game
 
 A 3D interactive clean water network optimization game. Players design pipe networks to supply water from an elevated reservoir to customer demand nodes, competing on cost vs hydraulic performance.
 
