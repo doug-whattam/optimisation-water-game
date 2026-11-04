@@ -1,12 +1,15 @@
 """FastAPI application entry point."""
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query
+from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import select
 
-from app.config import CORS_ORIGINS, DATABASE_URL
+from app.config import CORS_ORIGINS, STATIC_DIR
 from app.database import async_session_factory, create_tables
 from app.models import Player
 from app.routers import sessions, designs, pareto
@@ -15,9 +18,8 @@ from app.websocket.manager import manager
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # On startup: create tables if using SQLite (dev mode)
-    if "sqlite" in DATABASE_URL:
-        await create_tables()
+    # On startup: create any missing tables (SQLite dev mode or a fresh Postgres)
+    await create_tables()
     yield
 
 
@@ -85,3 +87,19 @@ async def websocket_endpoint(websocket: WebSocket, session_id: str, token: str =
             session_id,
             {"type": "player_left", "data": {"username": username}},
         )
+
+
+# Serve the built frontend from the same origin when STATIC_DIR is set. Registered
+# last so the /api and /ws routes above take priority.
+_static = Path(STATIC_DIR) if STATIC_DIR else None
+if _static and _static.is_dir():
+    app.mount("/assets", StaticFiles(directory=_static / "assets"), name="assets")
+
+    @app.get("/{path:path}", include_in_schema=False)
+    async def spa(path: str):
+        if path.startswith("api/"):
+            raise HTTPException(status_code=404)
+        file = (_static / path).resolve()
+        if path and file.is_file() and file.is_relative_to(_static.resolve()):
+            return FileResponse(file)
+        return FileResponse(_static / "index.html")

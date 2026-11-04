@@ -2,14 +2,18 @@ from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sess
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy import event
 
-from app.config import DATABASE_URL
+from app.config import DATABASE_URL, DATABASE_SSL
 
 # SQLite needs connect_args for async
 connect_args = {}
 if "sqlite" in DATABASE_URL:
     connect_args = {"check_same_thread": False, "timeout": 30}
+elif DATABASE_SSL:
+    connect_args = {"ssl": "require"}
 
-engine = create_async_engine(DATABASE_URL, echo=False, connect_args=connect_args)
+# pool_pre_ping: serverless Postgres (Neon) drops idle connections when it
+# scales to zero, so check each pooled connection before handing it out.
+engine = create_async_engine(DATABASE_URL, echo=False, connect_args=connect_args, pool_pre_ping=True)
 async_session_factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
 
@@ -34,6 +38,6 @@ async def get_db() -> AsyncSession:
 
 
 async def create_tables():
-    """Create all tables (used for SQLite dev mode)."""
+    """Create any missing tables (no-op for tables that already exist)."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
