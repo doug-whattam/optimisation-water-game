@@ -27,7 +27,7 @@ export default function HeaderBar({ onShowHelp }: Props) {
   const designing = playerState === 'designing'
 
   return (
-    <header className="z-20 flex h-12 shrink-0 items-center gap-4 border-b border-ink-700 bg-ink-900/95 px-4 backdrop-blur">
+    <header className="z-20 flex h-12 shrink-0 items-center gap-2 border-b border-ink-700 bg-ink-900/95 px-3 backdrop-blur sm:gap-4 sm:px-4">
       {/* Brand */}
       <div className="flex items-center gap-2.5">
         <svg width="22" height="22" viewBox="0 0 32 32" aria-hidden>
@@ -43,7 +43,7 @@ export default function HeaderBar({ onShowHelp }: Props) {
           />
         </svg>
         <div className="leading-none">
-          <span className="text-sm font-semibold tracking-tight text-slate-100">OptiChallenge</span>
+          <span className="hidden text-sm font-semibold tracking-tight text-slate-100 min-[400px]:inline">OptiChallenge</span>
           <span className="ml-2 hidden text-[11px] text-slate-500 lg:inline">
             Water Network Optimisation
           </span>
@@ -94,7 +94,7 @@ export default function HeaderBar({ onShowHelp }: Props) {
         </IconButton>
       </div>
 
-      <div className="h-5 w-px bg-ink-700" />
+      <div className="hidden h-5 w-px bg-ink-700 sm:block" />
 
       {lastPlanNumber !== null && (
         <span className="hidden text-[11px] text-slate-500 md:inline">
@@ -124,7 +124,7 @@ export default function HeaderBar({ onShowHelp }: Props) {
       </button>
 
       <div className="flex items-center gap-2 rounded-md border border-ink-700 bg-ink-950/60 py-1 pl-2.5 pr-1">
-        <span className="max-w-[130px] truncate text-xs font-medium text-slate-200" title={username ?? ''}>
+        <span className="max-w-[80px] truncate text-xs font-medium text-slate-200 sm:max-w-[130px]" title={username ?? ''}>
           {username}
         </span>
         <button
