@@ -5,23 +5,20 @@ import { connectWebSocket } from '@/api/websocket'
 import { BUDGET, DEMAND_NODES } from '@/types'
 
 /**
- * The backend can be cold on a free hosting tier, so the first request may take
- * the better part of a minute. Retry the relative path, then fall back to the
- * absolute API URL in case a proxy rewrite is the thing that's failing.
+ * The server can be waking up from sleep on a free hosting tier, so give the
+ * first request plenty of time and retry once before giving up.
  */
 async function getDefaultSession() {
-  const attempts = ['/api/sessions/default', `${import.meta.env.VITE_API_URL || '/api'}/sessions/default`]
+  const url = `${import.meta.env.VITE_API_URL || '/api'}/sessions/default`
   let lastError: unknown = new Error('Unable to reach the server')
 
-  for (const url of attempts) {
-    for (let retry = 0; retry < 2; retry++) {
-      try {
-        const res = await fetch(url, { signal: AbortSignal.timeout(45000) })
-        if (!res.ok) throw new Error(await res.text())
-        return res.json()
-      } catch (e) {
-        lastError = e
-      }
+  for (let retry = 0; retry < 2; retry++) {
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(45000) })
+      if (!res.ok) throw new Error(await res.text())
+      return res.json()
+    } catch (e) {
+      lastError = e
     }
   }
   throw lastError
