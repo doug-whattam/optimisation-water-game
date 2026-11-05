@@ -26,6 +26,8 @@ interface GameState {
   gridConfig: GridCell[]
   placedAssets: PlacedAsset[]
   selectedAssetType: AssetType | null
+  /** Erase tool: press/drag removes pipework. The touch stand-in for right-drag. */
+  eraseMode: boolean
   /** Rotation applied to the next asset placed. Rotated with `R`. */
   pendingRotation: Rotation
   hoveredCell: HoveredCell | null
@@ -55,6 +57,7 @@ interface GameState {
   setSession: (session: SessionInfo, token: string, username: string) => void
   setPlayerState: (state: PlayerState) => void
   selectAssetType: (type: AssetType | null) => void
+  setEraseMode: (on: boolean) => void
   rotatePending: () => void
   setHoveredCell: (cell: HoveredCell | null) => void
   placeAsset: (row: number, col: string, rotation?: Rotation) => boolean
@@ -119,6 +122,7 @@ export const useGameStore = create<GameState>((set, get) => {
     playerState: 'lobby',
     gridConfig: [],
     selectedAssetType: null,
+    eraseMode: false,
     hoveredCell: null,
     currentDesignId: null,
     simulationResult: null,
@@ -141,7 +145,10 @@ export const useGameStore = create<GameState>((set, get) => {
 
     setPlayerState: (state) => set({ playerState: state }),
 
-    selectAssetType: (type) => set({ selectedAssetType: type }),
+    // Picking a piece and erasing are mutually exclusive tools.
+    selectAssetType: (type) => set({ selectedAssetType: type, eraseMode: false }),
+
+    setEraseMode: (on) => set(on ? { eraseMode: true, selectedAssetType: null } : { eraseMode: false }),
 
     rotatePending: () =>
       set((s) => ({ pendingRotation: ((s.pendingRotation + 90) % 360) as Rotation })),
@@ -305,6 +312,7 @@ export const useGameStore = create<GameState>((set, get) => {
         playerState: 'lobby',
         gridConfig: [],
         selectedAssetType: null,
+        eraseMode: false,
         hoveredCell: null,
         currentDesignId: null,
         simulationResult: null,

@@ -6,6 +6,10 @@
  *   left drag across cells     → keep placing; the whole stroke is one undo step
  *   left click on placed asset → rotate it
  *   right press / drag         → remove
+ *   erase tool + press / drag  → remove (touch has no right button)
+ *
+ * With no piece selected and the erase tool off, a press on an empty tile does
+ * nothing, so a one-finger drag falls through to the orbit controls.
  *
  * Painting matters because a typical run is 8-12 cells; placing those one click
  * at a time was the bulk of the interaction cost.
@@ -103,7 +107,12 @@ export default function GridScene() {
   // A stroke can end anywhere — over a tile, over the sky, or outside the
   // canvas entirely — so the release is handled on the window.
   useEffect(() => {
-    function endPaint() {
+    function endPaint(e: Event) {
+      // A finger has no hover, so don't leave the tooltip and ghost piece
+      // parked on the last tile touched.
+      if (e instanceof PointerEvent && e.pointerType !== 'mouse') {
+        useGameStore.getState().setHoveredCell(null)
+      }
       if (paintMode.current === null) return
       paintMode.current = null
       if (controls) controls.enabled = true
@@ -124,13 +133,18 @@ export default function GridScene() {
   const handlePointerDown = useCallback(
     (row: number, col: string, e: ThreeEvent<PointerEvent>) => {
       if (!designing || isDemandCell(row, col)) return
-      e.stopPropagation()
+      // A second finger mid-stroke is the start of a pinch, not another stroke.
+      if (paintMode.current !== null) return
 
       const store = useGameStore.getState()
       const occupied = store.placedAssets.some((a) => a.row === row && a.col === col)
 
-      // Right button removes, and drags to keep removing.
-      if (e.button === 2) {
+      // Nothing to do here: let the press reach the orbit controls.
+      if (e.button === 0 && !occupied && !store.selectedAssetType && !store.eraseMode) return
+      e.stopPropagation()
+
+      // Right button (or the erase tool) removes, and drags to keep removing.
+      if (e.button === 2 || (e.button === 0 && store.eraseMode)) {
         beginPaint('remove')
         store.removeAsset(row, col)
         return
