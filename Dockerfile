@@ -1,5 +1,5 @@
 # Single-container build: the FastAPI backend serves the built frontend, so the
-# whole game runs on one origin. Used for the Hugging Face Space deploy.
+# whole game runs on one origin. Used for the Render deploy (see render.yaml).
 
 # --- Frontend build ---
 FROM node:20-slim AS frontend
@@ -16,19 +16,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Hugging Face Spaces run the container as uid 1000
-RUN useradd -m -u 1000 user
-USER user
-ENV HOME=/home/user \
-    PATH=/home/user/.local/bin:$PATH \
-    STATIC_DIR=/home/user/app/static
-WORKDIR /home/user/app
+WORKDIR /app
+ENV STATIC_DIR=/app/static
 
-COPY --chown=user backend/requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY --chown=user backend/ .
-COPY --chown=user --from=frontend /frontend/dist ./static
+COPY backend/ .
+COPY --from=frontend /frontend/dist ./static
 
-EXPOSE 7860
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "7860", "--workers", "1"]
+# Render sets PORT; default to 8000 for local runs
+EXPOSE 8000
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 1"]

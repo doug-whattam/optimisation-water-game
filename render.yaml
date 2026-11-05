@@ -1,0 +1,15 @@
+services:
+  # Game + API in one container (root Dockerfile). Data lives in Neon Postgres,
+  # so nothing is lost when Render restarts or redeploys the instance.
+  - type: web
+    name: optichallenge
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      # Neon connection string; entered in the Render dashboard, never committed
+      - key: DATABASE_URL
+        sync: false

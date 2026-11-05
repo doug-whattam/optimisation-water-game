@@ -8,7 +8,7 @@ A 3D interactive clean water network optimization game. Players design pipe netw
 - **Backend**: Python FastAPI + WNTR (EPANET 2.2) + SQLAlchemy
 - **Database**: PostgreSQL 15
 - **Real-time**: WebSockets via FastAPI
-- **Deployment**: Hugging Face Spaces (app) + Neon (Postgres), all free tiers; Docker Compose for local
+- **Deployment**: Render (app) + Neon (Postgres), all free tiers; Docker Compose for local
 
 ## Quick Start
 
@@ -54,22 +54,19 @@ and the FastAPI backend serves it, so the site, API and WebSockets share one URL
 
 | Piece | Service | Free tier notes |
 |---|---|---|
-| App (frontend + API) | [Hugging Face Spaces](https://huggingface.co/spaces) (Docker) | 2 vCPU / 16 GB, no card. Pauses after 48 h with no traffic. |
-| Database | [Neon](https://neon.tech) Postgres | No card. Wakes in under a second, so it never feels asleep. |
-| Deploys + keep-alive | GitHub Actions | `deploy.yml` pushes on every merge to `master`; `keep-alive.yml` pings every 3 h. |
+| App (frontend + API) | [Render](https://render.com) web service (Docker, `render.yaml`) | 750 h/month covers one service 24/7. Sleeps after 15 min without traffic. |
+| Database | [Neon](https://neon.tech) Postgres | Wakes in under a second, so it never feels asleep. Data survives Render restarts. |
+| Keep awake | [cron-job.org](https://cron-job.org) | Pings `/api/health` every 10 min so Render never sleeps. `keep-alive.yml` is a GitHub backup. |
 
 One-time setup:
 
-1. **Neon**: create a project and copy its connection string
-   (`postgresql://...neon.tech/neondb?sslmode=require`). The app converts it for asyncpg and creates its tables on startup.
-2. **Hugging Face**: create a new Space, SDK **Docker**, blank template, public.
-   In the Space's *Settings > Variables and secrets*, add a secret `DATABASE_URL` with the Neon string.
-3. **Hugging Face token**: *Settings > Access Tokens > New token*, type **Write**.
-4. **GitHub** (*repo Settings > Secrets and variables > Actions*):
-   - secret `HF_TOKEN`: the token from step 3
-   - variable `HF_SPACE`: `your-hf-username/your-space-name`
-   - variable `APP_URL`: `https://your-hf-username-your-space-name.hf.space`
-5. Run the **Deploy to Hugging Face** workflow (Actions tab) or merge to `master`. The first build takes a few minutes; the game is then at `APP_URL`.
+1. **Neon**: copy the project's connection string from the Neon console
+   (`postgresql://...neon.tech/neondb?sslmode=require`), or run `neon connection-string`.
+   The app converts it for asyncpg and creates its tables on startup.
+2. **Render**: *New > Blueprint*, pick this repo, and paste the Neon string when it asks for `DATABASE_URL`.
+   Render deploys on every push to `master`. Then delete the old API and static-site services.
+3. **cron-job.org**: create a job that GETs `https://<your-service>.onrender.com/api/health` every 10 minutes.
+4. **GitHub** (*repo Settings > Secrets and variables > Actions*): variable `APP_URL` set to the Render URL, for the backup pinger.
 
 GitHub turns off scheduled workflows after 60 days with no commits on a public repo;
 re-enable **Keep alive** in the Actions tab if that happens.

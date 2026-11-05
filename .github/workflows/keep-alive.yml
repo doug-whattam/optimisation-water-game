@@ -1,11 +1,12 @@
-# Free Hugging Face Spaces pause after 48 hours without traffic. Ping the health
-# endpoint every few hours so the game stays awake between events.
-# Needs repo variable APP_URL (e.g. "https://user-optichallenge.hf.space").
+# Backup pinger. Render's free tier sleeps after 15 minutes without traffic; the
+# main pinger is an external cron (cron-job.org, every 10 min). GitHub often runs
+# schedules late, so this only covers gaps if that one stops.
+# Needs repo variable APP_URL (e.g. "https://optichallenge.onrender.com").
 name: Keep alive
 
 on:
   schedule:
-    - cron: "17 */3 * * *"
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 jobs:
