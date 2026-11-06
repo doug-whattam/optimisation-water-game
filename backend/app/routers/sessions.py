@@ -106,20 +106,35 @@ async def join_session(session_id: str, body: JoinRequest, db: AsyncSession = De
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Check max players
-    connected = [p for p in session.players if p.is_connected]
-    if len(connected) >= session.max_players:
-        raise HTTPException(status_code=409, detail=f"Session has reached maximum player count ({session.max_players})")
+    # Rejoining with an existing username returns that player (same id, token
+    # and designs) instead of creating a duplicate, so refreshes and new tabs
+    # don't use up player slots. Usernames aren't authenticated, so anyone
+    # entering the same name gets the same player; fine for a workshop game.
+    username = body.username.strip()
+    existing = next(
+        (p for p in session.players if p.username.lower() == username.lower()), None
+    )
+    if existing:
+        existing.is_connected = True
+        await db.commit()
+        await db.refresh(session)
+        return JoinResponse(
+            player_id=existing.id,
+            session_token=existing.session_token,
+            session=_session_to_response(session),
+        )
 
-    # Check duplicate username
-    for p in session.players:
-        if p.username == body.username and p.is_connected:
-            raise HTTPException(status_code=409, detail=f"Username '{body.username}' is already taken in this session")
+    # Only genuinely new players count against the cap
+    if len(session.players) >= session.max_players:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Session has reached maximum player count ({session.max_players})",
+        )
 
     # Create player
     token = secrets.token_urlsafe(96)
     player = Player(
-        username=body.username,
+        username=username,
         session_id=session.id,
         session_token=token,
     )
